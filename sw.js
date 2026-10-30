@@ -1,4 +1,4 @@
-const CACHE = 'tricaps-v18';
+const CACHE = 'tricaps-v19';
 const SHELL = [
   './', 'index.html', 'app.css', 'manifest.webmanifest',
   'js/app.js', 'js/audio.js', 'js/transcribe.js', 'js/captions.js', 'js/render.js', 'js/render-fast.js',
