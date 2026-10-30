@@ -1,13 +1,16 @@
+import { parseDictionary, buildPrompt, applyFixes } from './dictionary.js?v=28';
+
 const ENDPOINT = 'https://api.groq.com/openai/v1/audio/transcriptions';
 const PROMPT = 'Transkription auf Hochdeutsch. Gesprochen wird Schweizerdeutsch.';
 
-export async function transcribe(audio, apiKey) {
+export async function transcribe(audio, apiKey, dictionary = '') {
+  const { terms, fixes } = parseDictionary(dictionary);
   const fd = new FormData();
   fd.append('file', audio.blob, audio.name);
   fd.append('model', 'whisper-large-v3');
   fd.append('language', 'de');
   fd.append('temperature', '0');
-  fd.append('prompt', PROMPT);
+  fd.append('prompt', buildPrompt(PROMPT, terms));
   fd.append('response_format', 'verbose_json');
   fd.append('timestamp_granularities[]', 'word');
   fd.append('timestamp_granularities[]', 'segment');
@@ -23,7 +26,7 @@ export async function transcribe(audio, apiKey) {
     throw new Error(`Groq-Fehler: ${msg}`);
   }
   const data = await res.json();
-  return removeFillers(toWords(data));
+  return removeFillers(applyFixes(toWords(data), fixes));
 }
 
 // Word timestamps come without punctuation; borrow it from the segment text when the token counts line up.
