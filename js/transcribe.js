@@ -23,7 +23,7 @@ export async function transcribe(wav, apiKey) {
     throw new Error(`Groq-Fehler: ${msg}`);
   }
   const data = await res.json();
-  return toWords(data);
+  return removeFillers(toWords(data));
 }
 
 // Word timestamps come without punctuation; borrow it from the segment text when the token counts line up.
@@ -45,4 +45,28 @@ export function toWords(data) {
 
 export function swiss(text) {
   return text.replace(/ß/g, 'ss').replace(/ẞ/g, 'SS');
+}
+
+// "eh" is deliberately not a filler: it also means "anyway" ("das mache ich eh").
+const FILLER = /^(ä+h+m*|ä+m+|ö+h+m*|ö+m+|e+h+m+|h+m+|m+h+m+)$/i;
+
+export function removeFillers(words) {
+  const kept = [];
+  let capitalize = false;
+  for (const w of words) {
+    const bare = w.text.replace(/[.,!?;:…]+$/, '');
+    if (!FILLER.test(bare)) {
+      if (capitalize) w.text = w.text.charAt(0).toLocaleUpperCase('de') + w.text.slice(1);
+      capitalize = false;
+      kept.push(w);
+      continue;
+    }
+    // A capitalised filler started a sentence, so the next real word now does.
+    if (bare.charAt(0) !== bare.charAt(0).toLocaleLowerCase('de')) capitalize = true;
+    // Keep sentence-ending punctuation that was attached to the filler.
+    const end = w.text.match(/[.!?…]+$/)?.[0];
+    const prev = kept.at(-1);
+    if (end && prev && !/[.!?…]$/.test(prev.text)) prev.text = prev.text.replace(/[,;:]+$/, '') + end;
+  }
+  return kept;
 }
