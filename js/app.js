@@ -1,8 +1,8 @@
-import { extractWav } from './audio.js?v=13';
-import { transcribe } from './transcribe.js?v=13';
-import { defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption } from './captions.js?v=13';
-import { renderVideo } from './render.js?v=13';
-import { renderFast } from './render-fast.js?v=13';
+import { extractWav } from './audio.js?v=14';
+import { transcribe } from './transcribe.js?v=14';
+import { defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption } from './captions.js?v=14';
+import { renderVideo } from './render.js?v=14';
+import { renderFast } from './render-fast.js?v=14';
 
 const $ = id => document.getElementById(id);
 
@@ -112,10 +112,20 @@ function setStyle(key, value) {
   adjustUntil = performance.now() + 1200;
 }
 
-$('pos-y').value = state.style.posY;
-$('pos-y').addEventListener('input', e => setStyle('posY', Number(e.target.value)));
-$('size').value = state.style.size;
-$('size').addEventListener('input', e => setStyle('size', Number(e.target.value)));
+// WebKit has no native "filled" part for range inputs, so the track gradient reads the fill from --p.
+function setSlider(el, value) {
+  el.value = value;
+  el.style.setProperty('--p', `${((el.value - el.min) / (el.max - el.min)) * 100}%`);
+}
+
+for (const [id, key] of [['pos-y', 'posY'], ['size', 'size']]) {
+  const el = $(id);
+  setSlider(el, state.style[key]);
+  el.addEventListener('input', () => {
+    setSlider(el, el.value);
+    setStyle(key, Number(el.value));
+  });
+}
 
 // Drag the caption up/down on the preview; a tap without movement plays/pauses.
 let drag = null;
@@ -130,7 +140,7 @@ stage.addEventListener('pointermove', e => {
   drag.moved = true;
   const pos = Math.min(0.95, Math.max(0.08, drag.pos + dy / stage.clientHeight));
   setStyle('posY', pos);
-  $('pos-y').value = pos;
+  setSlider($('pos-y'), pos);
 });
 stage.addEventListener('pointerup', () => {
   if (drag && !drag.moved) {
