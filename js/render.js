@@ -1,4 +1,4 @@
-import { drawCaption } from './captions.js?v=14';
+import { drawCaption } from './captions.js?v=15';
 
 const MIME_TYPES = [
   'video/mp4;codecs=avc1.640028,mp4a.40.2',

@@ -1,4 +1,4 @@
-import { drawCaption } from './captions.js?v=14';
+import { drawCaption } from './captions.js?v=15';
 
 const even = n => Math.max(2, Math.round(n / 2) * 2);
 
