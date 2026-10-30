@@ -77,11 +77,15 @@ main { padding: 16px 16px calc(env(safe-area-inset-bottom) + 16px); }
 
 .screen { display: flex; flex-direction: column; gap: 16px; }
 
+body { display: flex; flex-direction: column; }
+main { flex: 1; display: flex; flex-direction: column; }
+/* Centred on the whole screen: the bottom padding mirrors the header height above. */
 #screen-start, #screen-busy {
-  min-height: 60dvh;
+  flex: 1;
   justify-content: center;
   align-items: center;
   text-align: center;
+  padding-bottom: max(0px, calc(57px + env(safe-area-inset-top) - env(safe-area-inset-bottom)));
 }
 
 .big-btn {
