@@ -1,7 +1,8 @@
-import { extractWav } from './audio.js?v=12';
-import { transcribe } from './transcribe.js?v=12';
-import { defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption } from './captions.js?v=12';
-import { renderVideo } from './render.js?v=12';
+import { extractWav } from './audio.js?v=13';
+import { transcribe } from './transcribe.js?v=13';
+import { defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption } from './captions.js?v=13';
+import { renderVideo } from './render.js?v=13';
+import { renderFast } from './render-fast.js?v=13';
 
 const $ = id => document.getElementById(id);
 
@@ -63,6 +64,7 @@ $('file-input').addEventListener('change', async e => {
 
   if (state.url) URL.revokeObjectURL(state.url);
   state.url = URL.createObjectURL(file);
+  state.file = file;
   state.result = null;
   show('busy');
   try {
@@ -222,13 +224,19 @@ async function runExport() {
   try { lock = await navigator.wakeLock?.request('screen'); } catch {}
   try {
     await document.fonts.load(`${state.style.weight} 40px ${state.style.font}`);
-    const blob = await renderVideo({
-      url: state.url,
-      chunks: state.chunks,
-      style: state.style,
-      audioCtx,
-      onProgress: p => { $('busy-bar').style.width = `${Math.round(p * 100)}%`; },
-    });
+    const onProgress = p => { $('busy-bar').style.width = `${Math.round(p * 100)}%`; };
+    const job = { file: state.file, url: state.url, chunks: state.chunks, style: state.style, audioCtx, onProgress };
+    let blob = null;
+    try {
+      blob = await renderFast(job);
+    } catch (err) {
+      console.warn('Fast export failed, falling back to real-time export', err);
+    }
+    state.exportPath = blob ? 'fast' : 'realtime';
+    if (!blob) {
+      onProgress(0);
+      blob = await renderVideo(job);
+    }
     const ext = blob.type.includes('webm') ? 'webm' : 'mp4';
     state.result = new File([blob], `tricaps-${Date.now()}.${ext}`, { type: blob.type });
     setBusy('Fertig!', null, 'Tippe auf Speichern und wähle «Video sichern».');
