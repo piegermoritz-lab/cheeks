@@ -1,8 +1,10 @@
-import { extractWav } from './audio.js?v=16';
-import { transcribe } from './transcribe.js?v=16';
-import { defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption } from './captions.js?v=16';
-import { renderVideo } from './render.js?v=16';
-import { renderFast } from './render-fast.js?v=16';
+import { extractWav } from './audio.js?v=17';
+import { transcribe } from './transcribe.js?v=17';
+import {
+  defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption, splitChunk, mergeWithNext, moveEdge,
+} from './captions.js?v=17';
+import { renderVideo } from './render.js?v=17';
+import { renderFast } from './render-fast.js?v=17';
 
 const $ = id => document.getElementById(id);
 
@@ -16,6 +18,7 @@ const state = {
   returnTo: 'start',
   url: null,
   chunks: [],
+  selected: -1,
   style: {
     ...defaultStyle,
     maxWords: Number(store.get('maxWords', defaultStyle.maxWords)),
@@ -74,6 +77,9 @@ $('file-input').addEventListener('change', async e => {
     const words = await transcribe(wav, key);
     if (!words.length) throw new Error('Keine Sprache erkannt.');
     state.chunks = groupWords(words, state.style);
+    state.selected = -1;
+    history.length = 0;
+    updateUndo();
     openEditor();
   } catch (err) {
     alert(err.message || String(err));
@@ -122,9 +128,11 @@ for (const [id, key] of [['pos-y', 'posY'], ['size', 'size']]) {
   const el = $(id);
   setSlider(el, state.style[key]);
   el.addEventListener('input', () => {
+    beginChange('slider');
     setSlider(el, el.value);
     setStyle(key, Number(el.value));
   });
+  el.addEventListener('change', () => endChange('slider'));
 }
 
 // Drag the caption up/down on the preview; a tap without movement plays/pauses.
@@ -137,6 +145,7 @@ stage.addEventListener('pointermove', e => {
   if (!drag) return;
   const dy = e.clientY - drag.y;
   if (!drag.moved && Math.abs(dy) < 6) return;
+  if (!drag.moved) beginChange('drag');
   drag.moved = true;
   const pos = Math.min(0.95, Math.max(0.08, drag.pos + dy / stage.clientHeight));
   setStyle('posY', pos);
@@ -147,8 +156,9 @@ stage.addEventListener('pointerup', () => {
     if (preview.paused) preview.play(); else preview.pause();
   }
   drag = null;
+  endChange('drag');
 });
-stage.addEventListener('pointercancel', () => { drag = null; });
+stage.addEventListener('pointercancel', () => { drag = null; endChange('drag'); });
 
 let activeChunk = null;
 function tick() {
@@ -176,44 +186,165 @@ function tick() {
 }
 requestAnimationFrame(tick);
 
+/* ---------- Undo ---------- */
+
+const history = [];
+let changeSession = null;
+
+function snapshot() {
+  history.push(JSON.stringify({ chunks: state.chunks, posY: state.style.posY, size: state.style.size }));
+  if (history.length > 100) history.shift();
+  updateUndo();
+}
+
+// Groups a continuous gesture (typing, dragging a slider) into a single undo step.
+function beginChange(kind) {
+  if (changeSession === kind) return;
+  changeSession = kind;
+  snapshot();
+}
+
+function endChange(kind) {
+  if (changeSession === kind) changeSession = null;
+}
+
+function updateUndo() {
+  $('btn-undo').disabled = history.length === 0;
+}
+
+$('btn-undo').addEventListener('click', () => {
+  const last = history.pop();
+  if (!last) return;
+  changeSession = null;
+  const snap = JSON.parse(last);
+  state.chunks = snap.chunks;
+  for (const [id, key] of [['pos-y', 'posY'], ['size', 'size']]) {
+    setStyle(key, snap[key]);
+    setSlider($(id), snap[key]);
+  }
+  state.selected = Math.min(state.selected, state.chunks.length - 1);
+  renderList();
+  updateUndo();
+});
+
+/* ---------- Caption list ---------- */
+
+const fmtPrecise = t => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`;
+const caret = new WeakMap();
+
+function edit(fn) {
+  const before = JSON.stringify(state.chunks);
+  snapshot();
+  fn();
+  if (JSON.stringify(state.chunks) === before) {
+    history.pop();
+    updateUndo();
+  }
+  renderList();
+}
+
+function select(i) {
+  if (state.selected === i) return;
+  state.selected = i;
+  renderList();
+}
+
+function seek(t) {
+  preview.pause();
+  preview.currentTime = Math.max(0, t) + 0.01;
+}
+
+function el(tag, props = {}, ...children) {
+  const node = Object.assign(document.createElement(tag), props);
+  node.append(...children);
+  return node;
+}
+
+function edgeControl(label, i, edge) {
+  const chunk = state.chunks[i];
+  const step = delta => () => edit(() => {
+    moveEdge(state.chunks, i, edge, delta, preview.duration || Infinity);
+    const c = state.chunks[i];
+    seek(edge === 'start' ? c.start : Math.max(c.start, c.end - 0.4));
+  });
+  return el('div', { className: 'edge' },
+    el('button', { className: 'step', textContent: '−', ariaLabel: `${label} früher`, onclick: step(-0.1) }),
+    el('span', {}, label, el('b', { textContent: fmtPrecise(edge === 'start' ? chunk.start : chunk.end) })),
+    el('button', { className: 'step', textContent: '+', ariaLabel: `${label} später`, onclick: step(0.1) }),
+  );
+}
+
+function toolsFor(i) {
+  const chunk = state.chunks[i];
+  const split = el('button', { className: 'pill', textContent: 'Teilen', disabled: chunk.words.length < 2 });
+  split.addEventListener('click', () => edit(() => {
+    const input = list.children[i]?.querySelector('input');
+    const pos = caret.get(chunk) ?? 0;
+    const text = input ? input.value : chunk.words.map(w => w.text).join(' ');
+    const before = text.slice(0, pos).trim().split(/\s+/).filter(Boolean).length;
+    const atEdge = pos <= 0 || pos >= text.trimEnd().length;
+    splitChunk(state.chunks, i, atEdge ? Math.ceil(chunk.words.length / 2) : before);
+  }));
+  const merge = el('button', { className: 'pill', textContent: 'Verbinden ↓', ariaLabel: 'Mit nächster Caption verbinden', disabled: i >= state.chunks.length - 1 });
+  merge.addEventListener('click', () => edit(() => mergeWithNext(state.chunks, i)));
+
+  return el('div', { className: 'tools' },
+    el('div', { className: 'timing' }, edgeControl('Start', i, 'start'), edgeControl('Ende', i, 'end')),
+    el('div', { className: 'actions-row' }, split, merge),
+  );
+}
+
 function renderList() {
-  list.replaceChildren(...state.chunks.map(chunk => {
-    const li = document.createElement('li');
-    li.className = 'chunk';
+  list.replaceChildren(...state.chunks.map((chunk, i) => {
+    const time = el('time', { textContent: fmt(chunk.start) });
+    time.addEventListener('click', () => seek(chunk.start));
 
-    const time = document.createElement('time');
-    time.textContent = fmt(chunk.start);
-    time.addEventListener('click', () => { preview.currentTime = chunk.start + 0.01; });
-
-    const input = document.createElement('input');
-    input.value = chunk.words.map(w => w.text).join(' ');
-    input.enterKeyHint = 'done';
-    input.autocapitalize = 'off';
+    const input = el('input', { value: chunk.words.map(w => w.text).join(' '), enterKeyHint: 'done', autocapitalize: 'off' });
+    const rememberCaret = () => caret.set(chunk, input.selectionStart ?? 0);
     input.addEventListener('focus', () => {
-      preview.pause();
-      preview.currentTime = chunk.start + 0.01;
+      seek(chunk.start);
+      if (state.selected !== i) {
+        state.selected = i;
+        list.querySelectorAll('.chunk.selected').forEach(n => { n.classList.remove('selected'); n.querySelector('.tools')?.remove(); });
+        li.classList.add('selected');
+        li.append(toolsFor(i));
+      }
     });
-    input.addEventListener('input', () => setChunkText(chunk, input.value));
+    input.addEventListener('input', () => {
+      beginChange('text');
+      setChunkText(chunk, input.value);
+      rememberCaret();
+    });
+    for (const ev of ['keyup', 'pointerup', 'select']) input.addEventListener(ev, rememberCaret);
+    input.addEventListener('blur', () => endChange('text'));
     input.addEventListener('change', () => {
-      if (!input.value.trim()) removeChunk(chunk);
+      if (!input.value.trim()) removeChunk(i);
     });
     input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); });
 
-    const del = document.createElement('button');
-    del.className = 'del';
-    del.textContent = '×';
-    del.setAttribute('aria-label', 'Caption löschen');
-    del.addEventListener('click', () => removeChunk(chunk));
+    const del = el('button', { className: 'del', textContent: '×', ariaLabel: 'Caption löschen' });
+    del.addEventListener('click', e => { e.stopPropagation(); removeChunk(i); });
 
-    li.append(time, input, del);
+    const li = el('li', { className: 'chunk' }, el('div', { className: 'row' }, time, input, del));
+    li.addEventListener('click', e => {
+      if (e.target.closest('.tools, input, button, time')) return;
+      select(i);
+      seek(chunk.start);
+    });
+    if (i === state.selected) {
+      li.classList.add('selected');
+      li.append(toolsFor(i));
+    }
     return li;
   }));
   activeChunk = undefined;
 }
 
-function removeChunk(chunk) {
-  state.chunks = state.chunks.filter(c => c !== chunk);
-  renderList();
+function removeChunk(i) {
+  edit(() => {
+    state.chunks.splice(i, 1);
+    state.selected = -1;
+  });
 }
 
 /* ---------- Export ---------- */
@@ -301,6 +432,7 @@ $('btn-settings-done').addEventListener('click', () => {
     state.style.maxWords = mw;
     store.set('maxWords', mw);
     if (state.chunks.length) {
+      snapshot();
       state.chunks = groupWords(flatten(state.chunks), state.style);
       renderList();
     }

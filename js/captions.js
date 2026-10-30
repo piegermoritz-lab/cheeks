@@ -175,3 +175,54 @@ export function drawCaption(ctx, W, H, chunks, t, style) {
   }
   ctx.restore();
 }
+
+const MIN_LEN = 0.2;
+
+// Moves a chunk to a new time span and stretches its word timings along with it.
+function retimeTo(chunk, start, end) {
+  const span = chunk.end - chunk.start || 1;
+  const map = t => start + ((t - chunk.start) / span) * (end - start);
+  for (const w of chunk.words) {
+    w.start = map(w.start);
+    w.end = map(w.end);
+  }
+  chunk.start = start;
+  chunk.end = end;
+}
+
+// Splits chunk i so that its first n words stay and the rest become a new chunk right after it.
+export function splitChunk(chunks, i, n) {
+  const c = chunks[i];
+  if (!c || c.words.length < 2) return false;
+  n = Math.min(c.words.length - 1, Math.max(1, n));
+  let cut = c.words[n].start;
+  if (cut <= c.start + 0.05 || cut >= c.end - 0.05) cut = (c.start + c.end) / 2;
+  const a = { words: c.words.slice(0, n), start: c.start, end: cut };
+  const b = { words: c.words.slice(n), start: cut, end: c.end };
+  chunks.splice(i, 1, a, b);
+  return true;
+}
+
+export function mergeWithNext(chunks, i) {
+  const a = chunks[i];
+  const b = chunks[i + 1];
+  if (!a || !b) return false;
+  chunks.splice(i, 2, { words: [...a.words, ...b.words], start: a.start, end: b.end });
+  return true;
+}
+
+// Moves the start or end of chunk i by delta seconds; a neighbour that would overlap gets shortened.
+export function moveEdge(chunks, i, edge, delta, duration = Infinity) {
+  const c = chunks[i];
+  const prev = chunks[i - 1];
+  const next = chunks[i + 1];
+  if (edge === 'start') {
+    const s = Math.max(prev ? prev.start + MIN_LEN : 0, Math.min(c.start + delta, c.end - MIN_LEN));
+    if (prev && prev.end > s) retimeTo(prev, prev.start, s);
+    retimeTo(c, s, c.end);
+  } else {
+    const e = Math.min(next ? next.end - MIN_LEN : duration, Math.max(c.end + delta, c.start + MIN_LEN));
+    if (next && next.start < e) retimeTo(next, e, next.end);
+    retimeTo(c, c.start, e);
+  }
+}

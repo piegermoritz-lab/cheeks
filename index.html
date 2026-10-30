@@ -10,13 +10,13 @@
   <meta name="apple-mobile-web-app-title" content="tricaps">
   <title>tricaps</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=16">
-  <link rel="icon" type="image/png" sizes="64x64" href="icons/favicon-light.png?v=16" media="(prefers-color-scheme: light)">
-  <link rel="icon" type="image/png" sizes="64x64" href="icons/favicon-dark.png?v=16" media="(prefers-color-scheme: dark)">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=17">
+  <link rel="icon" type="image/png" sizes="64x64" href="icons/favicon-light.png?v=17" media="(prefers-color-scheme: light)">
+  <link rel="icon" type="image/png" sizes="64x64" href="icons/favicon-dark.png?v=17" media="(prefers-color-scheme: dark)">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@800&display=swap">
-  <link rel="stylesheet" href="app.css?v=16">
+  <link rel="stylesheet" href="app.css?v=17">
 </head>
 <body>
   <header class="bar">
@@ -71,6 +71,13 @@
           <input id="size" type="range" min="0.04" max="0.14" step="0.002">
         </label>
       </div>
+      <div class="list-bar">
+        <span class="hint">Tippe auf eine Caption für Teilen, Verbinden und Timing.</span>
+        <button id="btn-undo" class="pill" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+          Rückgängig
+        </button>
+      </div>
       <ol id="chunks" class="chunks"></ol>
       <div class="actions">
         <button id="btn-export" class="big-btn">Exportieren</button>
@@ -91,6 +98,6 @@
     </section>
   </main>
 
-  <script type="module" src="js/app.js?v=16"></script>
+  <script type="module" src="js/app.js?v=17"></script>
 </body>
 </html>

@@ -169,10 +169,33 @@ main { padding: 16px 16px calc(env(safe-area-inset-bottom) + 16px); }
 
 .chunks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .chunk {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; flex-direction: column; gap: 8px;
   padding: 8px 10px; border-radius: 12px;
   background: var(--panel); border: 2px solid transparent;
 }
+.chunk .row { display: flex; align-items: center; gap: 10px; }
+.chunk.selected, .chunk.selected.active { border-color: var(--text); }
+
+.tools { display: flex; flex-direction: column; gap: 8px; padding: 2px 0 4px; }
+.tools .timing { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.edge { display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 4px; border-radius: 10px; background: var(--field); }
+.edge span { flex: 1; text-align: center; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; line-height: 1.2; }
+.edge span b { display: block; color: var(--text); font-size: 15px; }
+.tools .actions-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+.pill, .step {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border: 0; border-radius: 10px; background: var(--field); color: var(--text);
+  font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.pill { height: 38px; padding: 0 12px; }
+.pill svg { width: 16px; height: 16px; }
+.pill:disabled, .step:disabled { opacity: .35; cursor: default; }
+.step { width: 36px; height: 36px; font-size: 20px; background: var(--panel); }
+
+.list-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.list-bar .hint { font-size: 13px; }
+#btn-undo { flex: none; background: var(--panel); }
 .chunk.active { border-color: var(--active); }
 .chunk time { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; min-width: 42px; }
 .chunk input {
