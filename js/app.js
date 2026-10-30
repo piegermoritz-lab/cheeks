@@ -1,7 +1,7 @@
-import { extractWav } from './audio.js?v=9';
-import { transcribe } from './transcribe.js?v=9';
-import { defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption } from './captions.js?v=9';
-import { renderVideo } from './render.js?v=9';
+import { extractWav } from './audio.js?v=10';
+import { transcribe } from './transcribe.js?v=10';
+import { defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption } from './captions.js?v=10';
+import { renderVideo } from './render.js?v=10';
 
 const $ = id => document.getElementById(id);
 
@@ -15,7 +15,11 @@ const state = {
   returnTo: 'start',
   url: null,
   chunks: [],
-  style: { ...defaultStyle, maxWords: Number(store.get('maxWords', defaultStyle.maxWords)) },
+  style: {
+    ...defaultStyle,
+    maxWords: Number(store.get('maxWords', defaultStyle.maxWords)),
+    posY: Number(store.get('posY', defaultStyle.posY)),
+  },
   result: null,
   rendering: false,
 };
@@ -95,6 +99,12 @@ function sizeOverlay() {
   overlay.height = Math.round(stage.clientHeight * dpr);
 }
 window.addEventListener('resize', sizeOverlay);
+
+$('pos-y').value = state.style.posY;
+$('pos-y').addEventListener('input', e => {
+  state.style.posY = Number(e.target.value);
+  store.set('posY', state.style.posY);
+});
 
 stage.addEventListener('click', () => {
   if (preview.paused) preview.play(); else preview.pause();
@@ -181,7 +191,7 @@ async function runExport() {
   let lock = null;
   try { lock = await navigator.wakeLock?.request('screen'); } catch {}
   try {
-    await document.fonts.load(`${state.style.weight} 40px "${state.style.font}"`);
+    await document.fonts.load(`${state.style.weight} 40px ${state.style.font}`);
     const blob = await renderVideo({
       url: state.url,
       chunks: state.chunks,
@@ -256,7 +266,7 @@ $('btn-back').addEventListener('click', () => {
   if (state.screen === 'editor' && confirm('Video verwerfen und neu starten?')) show('start');
 });
 
-document.fonts.load(`${state.style.weight} 40px "${state.style.font}"`).catch(() => {});
+document.fonts.load(`${state.style.weight} 40px ${state.style.font}`).catch(() => {});
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 

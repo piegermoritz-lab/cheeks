@@ -1,20 +1,22 @@
 export const defaultStyle = {
-  font: 'Montserrat',
-  weight: 900,
-  size: 0.075,          // font size as fraction of video width
-  lineHeight: 1.15,
-  maxWidth: 0.86,       // text block width as fraction of video width
-  posY: 0.68,           // vertical centre as fraction of video height
+  font: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+  weight: 700,
+  size: 0.084,          // font size as fraction of video width
+  tracking: -0.045,     // letter spacing in em
+  lineHeight: 1.1,
+  maxWidth: 0.9,        // text block width as fraction of video width
+  posY: 0.6,            // vertical centre as fraction of video height
   color: '#ffffff',
-  highlight: '#ffe600',
-  stroke: '#000000',
-  strokeWidth: 0.12,    // outline thickness as fraction of font size
-  shadow: 'rgba(0,0,0,0.55)',
+  highlight: null,      // colour for the word being spoken, null = off
+  stroke: null,
+  strokeWidth: 0,       // outline thickness as fraction of font size
+  shadow: null,
+  lowercase: true,
   uppercase: false,
-  stripPunctuation: true,
-  pop: true,
-  maxWords: 3,
-  maxChars: 22,
+  stripPunctuation: false,
+  pop: false,
+  maxWords: 4,
+  maxChars: 24,
 };
 
 export function groupWords(words, style) {
@@ -85,8 +87,27 @@ export function chunkAt(chunks, t) {
 function display(text, style) {
   let s = text;
   if (style.stripPunctuation) s = s.replace(/[.,;:]+$/g, '').replace(/^["„“«»]+|["„“«»]+$/g, '');
-  if (style.uppercase) s = s.toUpperCase();
+  if (style.lowercase) s = s.toLocaleLowerCase('de');
+  if (style.uppercase) s = s.toLocaleUpperCase('de');
   return s;
+}
+
+// Canvas letterSpacing isn't available in every Safari version, so fall back to drawing glyph by glyph.
+function tracker(ctx, px) {
+  const native = 'letterSpacing' in ctx;
+  if (native) ctx.letterSpacing = `${px}px`;
+  return {
+    measure: text => native
+      ? ctx.measureText(text).width - px
+      : [...text].reduce((w, ch) => w + ctx.measureText(ch).width + px, 0) - px,
+    draw(text, x, y, paint) {
+      if (native) { paint(text, x, y); return; }
+      for (const ch of text) {
+        paint(ch, x, y);
+        x += ctx.measureText(ch).width + px;
+      }
+    },
+  };
 }
 
 export function drawCaption(ctx, W, H, chunks, t, style) {
@@ -94,19 +115,21 @@ export function drawCaption(ctx, W, H, chunks, t, style) {
   if (!chunk) return;
 
   const fontPx = Math.round(style.size * W);
-  ctx.font = `${style.weight} ${fontPx}px "${style.font}", sans-serif`;
+  ctx.save();
+  ctx.font = `${style.weight} ${fontPx}px ${style.font}`;
+  const tr = tracker(ctx, (style.tracking ?? 0) * fontPx);
   const words = chunk.words.map(w => ({ ...w, label: display(w.text, style) })).filter(w => w.label);
-  if (!words.length) return;
+  if (!words.length) { ctx.restore(); return; }
 
   let active = -1;
-  words.forEach((w, i) => { if (w.start <= t) active = i; });
+  if (style.highlight) words.forEach((w, i) => { if (w.start <= t) active = i; });
 
   const space = ctx.measureText(' ').width;
   const maxW = W * style.maxWidth;
   const lines = [];
   let line = { words: [], width: 0 };
   for (const [i, w] of words.entries()) {
-    const ww = ctx.measureText(w.label).width;
+    const ww = tr.measure(w.label);
     const next = line.words.length ? line.width + space + ww : ww;
     if (line.words.length && next > maxW) {
       lines.push(line);
@@ -121,7 +144,6 @@ export function drawCaption(ctx, W, H, chunks, t, style) {
   const cy = H * style.posY;
   const scale = style.pop ? Math.min(1, 0.85 + ((t - chunk.start) / 0.09) * 0.15) : 1;
 
-  ctx.save();
   ctx.translate(W / 2, cy);
   ctx.scale(scale, scale);
   ctx.translate(-W / 2, -cy);
@@ -134,7 +156,7 @@ export function drawCaption(ctx, W, H, chunks, t, style) {
   for (const ln of lines) {
     let x = (W - ln.width) / 2;
     for (const w of ln.words) {
-      if (style.strokeWidth > 0) {
+      if (style.strokeWidth > 0 && style.stroke) {
         if (style.shadow) {
           ctx.shadowColor = style.shadow;
           ctx.shadowBlur = fontPx * 0.15;
@@ -142,11 +164,11 @@ export function drawCaption(ctx, W, H, chunks, t, style) {
         }
         ctx.strokeStyle = style.stroke;
         ctx.lineWidth = fontPx * style.strokeWidth * 2;
-        ctx.strokeText(w.label, x, y);
+        tr.draw(w.label, x, y, (s, px, py) => ctx.strokeText(s, px, py));
         ctx.shadowColor = 'transparent';
       }
       ctx.fillStyle = w.i === active ? style.highlight : style.color;
-      ctx.fillText(w.label, x, y);
+      tr.draw(w.label, x, y, (s, px, py) => ctx.fillText(s, px, py));
       x += w.w + space;
     }
     y += lineH;

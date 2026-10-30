@@ -140,6 +140,9 @@ main { padding: 16px 16px calc(env(safe-area-inset-bottom) + 16px); }
 .stage video, .stage canvas { display: block; width: 100%; height: 100%; }
 .stage canvas { position: absolute; inset: 0; pointer-events: none; }
 
+.slider { display: flex; align-items: center; gap: 12px; padding: 0 4px; color: var(--muted); font-size: 14px; font-weight: 600; }
+.slider input { flex: 1; accent-color: var(--accent); height: 28px; }
+
 .chunks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .chunk {
   display: flex; align-items: center; gap: 10px;
