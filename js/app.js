@@ -1,10 +1,10 @@
-import { extractAudio } from './audio.js?v=24';
-import { transcribe } from './transcribe.js?v=24';
+import { extractAudio } from './audio.js?v=25';
+import { transcribe } from './transcribe.js?v=25';
 import {
   defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption, splitChunk, mergeWithNext, moveEdge,
-} from './captions.js?v=24';
-import { renderVideo } from './render.js?v=24';
-import { renderFast } from './render-fast.js?v=24';
+} from './captions.js?v=25';
+import { renderVideo } from './render.js?v=25';
+import { renderFast } from './render-fast.js?v=25';
 
 const $ = id => document.getElementById(id);
 
@@ -100,7 +100,11 @@ let playhead = 0;
 let handleDrag = null;
 
 const fmtPrecise = t => `${Math.floor(t / 60)}:${(Math.max(0, t) % 60).toFixed(1).padStart(4, '0')}`;
-const duration = () => (Number.isFinite(preview.duration) ? preview.duration : 0);
+const duration = () => (preview.duration > 0 && Number.isFinite(preview.duration) ? preview.duration : state.media?.duration ?? 0);
+const videoSize = () => ({
+  W: state.media?.width || preview.videoWidth || 9,
+  H: state.media?.height || preview.videoHeight || 16,
+});
 
 function el(tag, props = {}, ...children) {
   const node = Object.assign(document.createElement(tag), props);
@@ -109,18 +113,82 @@ function el(tag, props = {}, ...children) {
 }
 
 function openEditor() {
-  if (preview.src !== state.url) preview.src = state.url;
+  if (preview.src !== state.url) {
+    preview.src = state.url;
+    preview.load();
+    state.media = null;
+    timelineFor = null;
+    frameCanvas.hidden = true;
+    probeMedia(state.file, state.url);
+  }
   playhead = 0;
   closePanels();
   show('editor');
   layoutStage();
-  if (preview.readyState >= 1) buildTimeline();
+  if (duration()) buildTimeline();
+}
+
+// iOS doesn't load a <video> before the first tap on play, so duration, size and still frames are read from the
+// file directly. The <video> element is then only needed for playback.
+async function probeMedia(file, url) {
+  try {
+    const mb = await import('./vendor/mediabunny-1.64.0.min.mjs');
+    const input = new mb.Input({ source: new mb.BlobSource(file), formats: mb.ALL_FORMATS });
+    const vt = await input.getPrimaryVideoTrack();
+    if (!vt) return;
+    const media = {
+      duration: await input.computeDuration(),
+      width: vt.displayWidth,
+      height: vt.displayHeight,
+      first: await vt.getFirstTimestamp(),
+      sink: (await vt.canDecode()) ? new mb.CanvasSink(vt) : null,
+    };
+    if (state.url !== url) return;
+    state.media = media;
+    layoutStage();
+    buildTimeline();
+  } catch (err) {
+    console.warn('Reading the video file failed', err);
+  }
 }
 
 preview.addEventListener('loadedmetadata', () => {
   layoutStage();
   buildTimeline();
 });
+
+/* Still frames: while paused, the frame under the playhead is decoded from the file and drawn over the <video>. */
+
+const frameCanvas = $('frame');
+let frameWanted = null;
+let frameBusy = false;
+let frameShown = -1;
+
+async function requestFrame(t) {
+  if (!state.media?.sink) return;
+  frameWanted = t;
+  if (frameBusy) return;
+  frameBusy = true;
+  try {
+    while (frameWanted !== null) {
+      const want = frameWanted;
+      frameWanted = null;
+      const wrapped = await state.media.sink.getCanvas(Math.max(want, state.media.first));
+      frameShown = want;
+      if (!wrapped || !preview.paused || frameWanted !== null) continue;
+      const ctx = frameCanvas.getContext('2d');
+      ctx.drawImage(wrapped.canvas, 0, 0, frameCanvas.width, frameCanvas.height);
+      frameCanvas.hidden = false;
+    }
+  } catch (err) {
+    console.warn('Decoding a still frame failed', err);
+    frameShown = playhead;
+  } finally {
+    frameBusy = false;
+  }
+}
+
+preview.addEventListener('play', () => { frameCanvas.hidden = true; frameShown = -1; });
 
 // iOS shows a black box until a video has played once, so play it muted for an instant and stop on the first frame.
 preview.addEventListener('loadeddata', async () => {
@@ -137,18 +205,26 @@ preview.addEventListener('loadeddata', async () => {
 // Fit the preview into whatever space is left above the timeline.
 function layoutStage() {
   const wrap = $('stage-wrap');
-  const W = preview.videoWidth || 9;
-  const H = preview.videoHeight || 16;
+  const { W, H } = videoSize();
   const w = Math.min(wrap.clientWidth, wrap.clientHeight * (W / H));
   stage.style.width = `${Math.floor(w)}px`;
   stage.style.height = `${Math.floor(w * (H / W))}px`;
   const dpr = window.devicePixelRatio || 1;
-  overlay.width = Math.round(w * dpr);
-  overlay.height = Math.round(w * (H / W) * dpr);
+  const cw = Math.round(w * dpr);
+  const ch = Math.round(w * (H / W) * dpr);
+  if (overlay.width !== cw || overlay.height !== ch) {
+    overlay.width = frameCanvas.width = cw;
+    overlay.height = frameCanvas.height = ch;
+    frameShown = -1;
+  }
 }
 new ResizeObserver(() => { if (state.screen === 'editor') layoutStage(); }).observe($('stage-wrap'));
 
+let timelineFor = null;
 function buildTimeline() {
+  const key = `${state.url}|${duration()}`;
+  if (!duration() || timelineFor === key) return;
+  timelineFor = key;
   track.style.width = `${Math.ceil(duration() * PPS)}px`;
   renderBlocks();
   scrollToTime(playhead);
@@ -161,9 +237,8 @@ let thumbJob = 0;
 async function buildThumbs() {
   const job = ++thumbJob;
   const dur = duration();
-  const W = preview.videoWidth;
-  const H = preview.videoHeight;
-  if (!dur || !W) return;
+  const { W, H } = videoSize();
+  if (!dur) return;
   const dpr = window.devicePixelRatio || 1;
   const trackW = Math.ceil(dur * PPS);
   const tileH = 44;
@@ -559,6 +634,8 @@ function tick() {
     if (!preview.paused) {
       playhead = preview.currentTime;
       scrollToTime(playhead);
+    } else if (Math.abs(playhead - frameShown) > 0.001 && frameWanted !== playhead) {
+      requestFrame(playhead);
     }
     const ctx = overlay.getContext('2d');
     ctx.clearRect(0, 0, overlay.width, overlay.height);
