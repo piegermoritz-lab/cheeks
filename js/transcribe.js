@@ -1,9 +1,9 @@
 const ENDPOINT = 'https://api.groq.com/openai/v1/audio/transcriptions';
 const PROMPT = 'Transkription auf Hochdeutsch. Gesprochen wird Schweizerdeutsch.';
 
-export async function transcribe(wav, apiKey) {
+export async function transcribe(audio, apiKey) {
   const fd = new FormData();
-  fd.append('file', wav, 'audio.wav');
+  fd.append('file', audio.blob, audio.name);
   fd.append('model', 'whisper-large-v3');
   fd.append('language', 'de');
   fd.append('temperature', '0');

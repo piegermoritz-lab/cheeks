@@ -1,10 +1,10 @@
-import { extractWav } from './audio.js?v=17';
-import { transcribe } from './transcribe.js?v=17';
+import { extractAudio } from './audio.js?v=18';
+import { transcribe } from './transcribe.js?v=18';
 import {
   defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption, splitChunk, mergeWithNext, moveEdge,
-} from './captions.js?v=17';
-import { renderVideo } from './render.js?v=17';
-import { renderFast } from './render-fast.js?v=17';
+} from './captions.js?v=18';
+import { renderVideo } from './render.js?v=18';
+import { renderFast } from './render-fast.js?v=18';
 
 const $ = id => document.getElementById(id);
 
@@ -72,9 +72,9 @@ $('file-input').addEventListener('change', async e => {
   show('busy');
   try {
     setBusy('Audio wird gelesen…');
-    const { wav } = await extractWav(file);
+    const audio = await extractAudio(file);
     setBusy('Transkribiere…', null, 'Schweizerdeutsch → Hochdeutsch');
-    const words = await transcribe(wav, key);
+    const words = await transcribe(audio, key);
     if (!words.length) throw new Error('Keine Sprache erkannt.');
     state.chunks = groupWords(words, state.style);
     state.selected = -1;

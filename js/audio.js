@@ -1,5 +1,40 @@
 const TARGET_RATE = 16000;
 
+// Safari can't decodeAudioData() most iPhone videos ("Decoding failed"), so the audio track is copied out of the
+// container as-is. That needs no codec support at all; decoding to WAV is only the fallback for unusual codecs.
+export async function extractAudio(file) {
+  const mb = await import('./vendor/mediabunny-1.64.0.min.mjs');
+  const input = new mb.Input({ source: new mb.BlobSource(file), formats: mb.ALL_FORMATS });
+  const track = await input.getPrimaryAudioTrack().catch(() => null);
+  if (track === null && (await input.getPrimaryVideoTrack().catch(() => null))) {
+    throw new Error('Dieses Video hat keine Tonspur.');
+  }
+  try {
+    const copied = track && await copyAudio(mb, input, track.codec);
+    if (copied) return copied;
+  } catch (err) {
+    console.warn('Copying the audio track failed, decoding instead', err);
+  }
+  return { blob: (await extractWav(file)).wav, name: 'audio.wav' };
+}
+
+async function copyAudio(mb, input, codec) {
+  const container = codec === 'aac' ? 'm4a' : codec === 'opus' || codec === 'vorbis' ? 'webm' : null;
+  if (!container) return null;
+  const target = new mb.BufferTarget();
+  const format = container === 'm4a' ? new mb.Mp4OutputFormat({ fastStart: 'in-memory' }) : new mb.WebMOutputFormat();
+  const conversion = await mb.Conversion.init({
+    input,
+    output: new mb.Output({ format, target }),
+    video: { discard: true },
+    showWarnings: false,
+  });
+  if (!conversion.isValid || !conversion.utilizedTracks.some(t => t.isAudioTrack())) return null;
+  await conversion.execute();
+  const type = container === 'm4a' ? 'audio/mp4' : 'audio/webm';
+  return { blob: new Blob([target.buffer], { type }), name: `audio.${container}` };
+}
+
 export async function extractWav(file) {
   const buf = await file.arrayBuffer();
   const ctx = new AudioContext();
