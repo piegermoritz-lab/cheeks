@@ -1,18 +1,17 @@
-import { extractAudio } from './audio.js?v=28';
-import { transcribe } from './transcribe.js?v=28';
-import { DEFAULT_DICTIONARY } from './dictionary.js?v=28';
+import { extractAudio } from './audio.js?v=29';
+import { transcribe } from './transcribe.js?v=29';
+import { DEFAULT_DICTIONARY } from './dictionary.js?v=29';
 import {
   defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption, splitChunk, mergeWithNext, moveEdge,
-} from './captions.js?v=28';
-import { renderVideo } from './render.js?v=28';
-import { renderFast } from './render-fast.js?v=28';
+} from './captions.js?v=29';
+import { renderVideo } from './render.js?v=29';
+import { renderFast } from './render-fast.js?v=29';
 
 const $ = id => document.getElementById(id);
 
 const store = {
   get(k, fallback) { try { return localStorage.getItem(k) ?? fallback; } catch { return fallback; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch {} },
-  remove(k) { try { localStorage.removeItem(k); } catch {} },
 };
 
 const state = {
@@ -76,7 +75,7 @@ $('file-input').addEventListener('change', async e => {
     setBusy('Audio wird gelesen…');
     const audio = await extractAudio(file);
     setBusy('Transkribiere…', null, 'Schweizerdeutsch → Hochdeutsch');
-    const words = await transcribe(audio, key, store.get('dictionary', DEFAULT_DICTIONARY));
+    const words = await transcribe(audio, key, DEFAULT_DICTIONARY);
     if (!words.length) throw new Error('Keine Sprache erkannt.');
     state.chunks = groupWords(words, state.style);
     state.selected = -1;
@@ -767,15 +766,10 @@ function openSettings() {
   state.returnTo = state.screen === 'settings' ? state.returnTo : state.screen;
   $('api-key').value = store.get('groqKey', '');
   $('max-words').value = state.style.maxWords;
-  $('dictionary').value = store.get('dictionary', DEFAULT_DICTIONARY);
   show('settings');
 }
 
 $('btn-settings').addEventListener('click', openSettings);
-
-$('btn-dict-reset').addEventListener('click', () => {
-  if (confirm('Wörterbuch auf den Standard zurücksetzen? Eigene Einträge gehen verloren.')) $('dictionary').value = DEFAULT_DICTIONARY;
-});
 
 $('btn-theme').addEventListener('click', () => {
   const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
@@ -785,9 +779,6 @@ $('btn-theme').addEventListener('click', () => {
 
 $('btn-settings-done').addEventListener('click', () => {
   store.set('groqKey', $('api-key').value.trim());
-  const dict = $('dictionary').value;
-  if (dict.trim() === DEFAULT_DICTIONARY.trim()) store.remove('dictionary');
-  else store.set('dictionary', dict);
   const mw = Math.min(8, Math.max(1, Number($('max-words').value) || defaultStyle.maxWords));
   if (mw !== state.style.maxWords) {
     state.style.maxWords = mw;

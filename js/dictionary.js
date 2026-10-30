@@ -1,4 +1,4 @@
-// One entry per line. "wrong = right" replaces whole words/phrases after transcription; a line with just a term is
+// Edited here in code (not in the app). One entry per line. "wrong = right" replaces whole words/phrases after transcription; a line with just a term is
 // sent to Whisper as a spelling hint. Lines starting with # are comments.
 export const DEFAULT_DICTIONARY = `# Namen und Orte
 Moritz Pieger
@@ -13,6 +13,8 @@ Vau Ce A Allschwil = VCA Allschwil
 Alschwil = Allschwil
 Allschwyl = Allschwil
 Basel
+Münsterplatz
+Münster Platz = Münsterplatz
 Spiezathlon
 Spiez Athlon = Spiezathlon
 Spiezatlon = Spiezathlon
