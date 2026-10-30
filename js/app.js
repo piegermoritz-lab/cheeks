@@ -1,7 +1,7 @@
-import { extractWav } from './audio.js?v=5';
-import { transcribe } from './transcribe.js?v=5';
-import { defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption } from './captions.js?v=5';
-import { renderVideo } from './render.js?v=5';
+import { extractWav } from './audio.js?v=6';
+import { transcribe } from './transcribe.js?v=6';
+import { defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption } from './captions.js?v=6';
+import { renderVideo } from './render.js?v=6';
 
 const $ = id => document.getElementById(id);
 
@@ -232,7 +232,6 @@ $('btn-theme').addEventListener('click', () => {
   const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
   document.documentElement.dataset.theme = next;
   document.querySelector('meta[name="theme-color"]').content = next === 'light' ? '#f2f2f4' : '#1c1c1e';
-  store.set('theme', next);
 });
 
 $('btn-settings-done').addEventListener('click', () => {
