@@ -10,13 +10,13 @@
   <meta name="apple-mobile-web-app-title" content="tricaps">
   <title>tricaps</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=23">
-  <link rel="icon" type="image/png" sizes="64x64" href="icons/favicon-light.png?v=23" media="(prefers-color-scheme: light)">
-  <link rel="icon" type="image/png" sizes="64x64" href="icons/favicon-dark.png?v=23" media="(prefers-color-scheme: dark)">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=24">
+  <link rel="icon" type="image/png" sizes="64x64" href="icons/favicon-light.png?v=24" media="(prefers-color-scheme: light)">
+  <link rel="icon" type="image/png" sizes="64x64" href="icons/favicon-dark.png?v=24" media="(prefers-color-scheme: dark)">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@800&display=swap">
-  <link rel="stylesheet" href="app.css?v=23">
+  <link rel="stylesheet" href="app.css?v=24">
 </head>
 <body>
   <header class="bar">
@@ -30,6 +30,10 @@
     </button>
     <button id="btn-settings" class="icon-btn" aria-label="Einstellungen">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
+    <button id="btn-export" class="export-btn" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>
+      Exportieren
     </button>
   </header>
 
@@ -109,7 +113,6 @@
         <div class="playhead"></div>
       </div>
 
-      <button id="btn-export" class="big-btn">Exportieren</button>
     </section>
 
     <section id="screen-settings" class="screen" hidden>
@@ -126,6 +129,6 @@
     </section>
   </main>
 
-  <script type="module" src="js/app.js?v=23"></script>
+  <script type="module" src="js/app.js?v=24"></script>
 </body>
 </html>

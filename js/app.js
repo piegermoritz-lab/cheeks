@@ -1,10 +1,10 @@
-import { extractAudio } from './audio.js?v=23';
-import { transcribe } from './transcribe.js?v=23';
+import { extractAudio } from './audio.js?v=24';
+import { transcribe } from './transcribe.js?v=24';
 import {
   defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption, splitChunk, mergeWithNext, moveEdge,
-} from './captions.js?v=23';
-import { renderVideo } from './render.js?v=23';
-import { renderFast } from './render-fast.js?v=23';
+} from './captions.js?v=24';
+import { renderVideo } from './render.js?v=24';
+import { renderFast } from './render-fast.js?v=24';
 
 const $ = id => document.getElementById(id);
 
@@ -40,6 +40,8 @@ function show(name) {
   document.body.classList.toggle('editing', name === 'editor');
   $('btn-back').hidden = name === 'start' || (name === 'busy' && !state.result);
   $('btn-settings').hidden = name === 'settings' || name === 'busy';
+  $('btn-theme').hidden = name === 'editor';
+  $('btn-export').hidden = name !== 'editor';
   if (name !== 'editor') preview.pause();
   $('key-hint').hidden = !!store.get('groqKey', '');
 }
