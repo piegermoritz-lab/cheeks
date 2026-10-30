@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0b0f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Cheeks">
+  <title>Cheeks</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@800;900&display=swap">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="bar">
+    <button id="btn-back" class="icon-btn" hidden aria-label="Zurück">‹</button>
+    <h1>Cheeks</h1>
+    <button id="btn-settings" class="icon-btn" aria-label="Einstellungen">⚙︎</button>
+  </header>
+
+  <main>
+    <section id="screen-start" class="screen">
+      <label class="big-btn">
+        <input id="file-input" type="file" accept="video/*" hidden>
+        <span>Video wählen</span>
+      </label>
+      <p class="hint" id="key-hint" hidden>Zuerst in den Einstellungen den Groq API-Key eintragen.</p>
+    </section>
+
+    <section id="screen-busy" class="screen" hidden>
+      <div class="spinner"></div>
+      <p id="busy-text">Arbeite…</p>
+      <div class="progress"><div id="busy-bar"></div></div>
+      <button id="btn-save" class="big-btn" hidden>Speichern / Teilen</button>
+      <p class="hint" id="busy-hint"></p>
+    </section>
+
+    <section id="screen-editor" class="screen" hidden>
+      <div class="stage" id="stage">
+        <video id="preview" playsinline webkit-playsinline preload="auto"></video>
+        <canvas id="overlay"></canvas>
+      </div>
+      <ol id="chunks" class="chunks"></ol>
+      <div class="actions">
+        <button id="btn-export" class="big-btn">Exportieren</button>
+      </div>
+    </section>
+
+    <section id="screen-settings" class="screen" hidden>
+      <label class="field">
+        <span>Groq API-Key</span>
+        <input id="api-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="gsk_…">
+      </label>
+      <p class="hint">Gratis-Key holen auf <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a>. Der Key bleibt nur auf diesem Gerät.</p>
+      <label class="field">
+        <span>Wörter pro Caption (max.)</span>
+        <input id="max-words" type="number" min="1" max="8" inputmode="numeric">
+      </label>
+      <button id="btn-settings-done" class="big-btn">Fertig</button>
+    </section>
+  </main>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

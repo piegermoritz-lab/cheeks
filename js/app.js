@@ -1,0 +1,255 @@
+import { extractWav } from './audio.js';
+import { transcribe } from './transcribe.js';
+import { defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption } from './captions.js';
+import { renderVideo } from './render.js';
+
+const $ = id => document.getElementById(id);
+
+const store = {
+  get(k, fallback) { try { return localStorage.getItem(k) ?? fallback; } catch { return fallback; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+
+const state = {
+  screen: 'start',
+  returnTo: 'start',
+  url: null,
+  chunks: [],
+  style: { ...defaultStyle, maxWords: Number(store.get('maxWords', defaultStyle.maxWords)) },
+  result: null,
+  rendering: false,
+};
+
+let audioCtx = null;
+const preview = $('preview');
+const overlay = $('overlay');
+const stage = $('stage');
+const list = $('chunks');
+
+function show(name) {
+  state.screen = name;
+  for (const s of ['start', 'busy', 'editor', 'settings']) $(`screen-${s}`).hidden = s !== name;
+  $('btn-back').hidden = name === 'start' || (name === 'busy' && !state.result);
+  $('btn-settings').hidden = name === 'settings' || name === 'busy';
+  if (name !== 'editor') preview.pause();
+  $('key-hint').hidden = !!store.get('groqKey', '');
+}
+
+function setBusy(text, progress = null, hint = '') {
+  $('busy-text').textContent = text;
+  $('busy-hint').textContent = hint;
+  $('busy-bar').parentElement.hidden = progress === null;
+  $('busy-bar').style.width = `${Math.round((progress ?? 0) * 100)}%`;
+  $('btn-save').hidden = true;
+  document.querySelector('.spinner').classList.remove('done');
+}
+
+const fmt = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+
+/* ---------- Start ---------- */
+
+$('file-input').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  const key = store.get('groqKey', '');
+  if (!key) { openSettings(); return; }
+
+  if (state.url) URL.revokeObjectURL(state.url);
+  state.url = URL.createObjectURL(file);
+  state.result = null;
+  show('busy');
+  try {
+    setBusy('Audio wird gelesen…');
+    const { wav } = await extractWav(file);
+    setBusy('Transkribiere…', null, 'Schweizerdeutsch → Hochdeutsch');
+    const words = await transcribe(wav, key);
+    if (!words.length) throw new Error('Keine Sprache erkannt.');
+    state.chunks = groupWords(words, state.style);
+    openEditor();
+  } catch (err) {
+    alert(err.message || String(err));
+    show('start');
+  }
+});
+
+/* ---------- Editor ---------- */
+
+function openEditor() {
+  if (preview.src !== state.url) preview.src = state.url;
+  renderList();
+  show('editor');
+}
+
+preview.addEventListener('loadedmetadata', () => {
+  const { videoWidth: W, videoHeight: H } = preview;
+  stage.style.aspectRatio = `${W} / ${H}`;
+  stage.style.height = `min(52dvh, calc((100vw - 32px) * ${H / W}))`;
+  requestAnimationFrame(sizeOverlay);
+});
+
+function sizeOverlay() {
+  const dpr = window.devicePixelRatio || 1;
+  overlay.width = Math.round(stage.clientWidth * dpr);
+  overlay.height = Math.round(stage.clientHeight * dpr);
+}
+window.addEventListener('resize', sizeOverlay);
+
+stage.addEventListener('click', () => {
+  if (preview.paused) preview.play(); else preview.pause();
+});
+
+let activeChunk = null;
+function tick() {
+  if (state.screen === 'editor') {
+    const ctx = overlay.getContext('2d');
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+    const t = preview.currentTime;
+    drawCaption(ctx, overlay.width, overlay.height, state.chunks, t, state.style);
+    const c = chunkAt(state.chunks, t);
+    if (c !== activeChunk) {
+      activeChunk = c;
+      list.querySelectorAll('.chunk.active').forEach(el => el.classList.remove('active'));
+      const idx = state.chunks.indexOf(c);
+      const li = list.children[idx];
+      if (li) {
+        li.classList.add('active');
+        const editing = document.activeElement?.tagName === 'INPUT';
+        if (!preview.paused && !editing) li.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+    }
+  }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+function renderList() {
+  list.replaceChildren(...state.chunks.map(chunk => {
+    const li = document.createElement('li');
+    li.className = 'chunk';
+
+    const time = document.createElement('time');
+    time.textContent = fmt(chunk.start);
+    time.addEventListener('click', () => { preview.currentTime = chunk.start + 0.01; });
+
+    const input = document.createElement('input');
+    input.value = chunk.words.map(w => w.text).join(' ');
+    input.enterKeyHint = 'done';
+    input.autocapitalize = 'off';
+    input.addEventListener('focus', () => {
+      preview.pause();
+      preview.currentTime = chunk.start + 0.01;
+    });
+    input.addEventListener('input', () => setChunkText(chunk, input.value));
+    input.addEventListener('change', () => {
+      if (!input.value.trim()) removeChunk(chunk);
+    });
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); });
+
+    const del = document.createElement('button');
+    del.className = 'del';
+    del.textContent = '×';
+    del.setAttribute('aria-label', 'Caption löschen');
+    del.addEventListener('click', () => removeChunk(chunk));
+
+    li.append(time, input, del);
+    return li;
+  }));
+  activeChunk = undefined;
+}
+
+function removeChunk(chunk) {
+  state.chunks = state.chunks.filter(c => c !== chunk);
+  renderList();
+}
+
+/* ---------- Export ---------- */
+
+$('btn-export').addEventListener('click', () => {
+  // AudioContext must be created inside the tap, otherwise iOS keeps it suspended.
+  audioCtx ??= new AudioContext();
+  audioCtx.resume();
+  runExport();
+});
+
+async function runExport() {
+  state.result = null;
+  state.rendering = true;
+  show('busy');
+  setBusy('Video wird gerendert…', 0, 'Bildschirm anlassen und App offen lassen.');
+  let lock = null;
+  try { lock = await navigator.wakeLock?.request('screen'); } catch {}
+  try {
+    await document.fonts.load(`${state.style.weight} 40px "${state.style.font}"`);
+    const blob = await renderVideo({
+      url: state.url,
+      chunks: state.chunks,
+      style: state.style,
+      audioCtx,
+      onProgress: p => { $('busy-bar').style.width = `${Math.round(p * 100)}%`; },
+    });
+    const ext = blob.type.includes('webm') ? 'webm' : 'mp4';
+    state.result = new File([blob], `cheeks-${Date.now()}.${ext}`, { type: blob.type });
+    setBusy('Fertig!', 1, 'Tippe auf Speichern und wähle «Video sichern».');
+    document.querySelector('.spinner').classList.add('done');
+    $('btn-save').hidden = false;
+    $('btn-back').hidden = false;
+  } catch (err) {
+    alert(`Export fehlgeschlagen: ${err.message || err}`);
+    show('editor');
+  } finally {
+    state.rendering = false;
+    lock?.release?.().catch(() => {});
+  }
+}
+
+$('btn-save').addEventListener('click', async () => {
+  const file = state.result;
+  if (!file) return;
+  if (navigator.canShare?.({ files: [file] })) {
+    try { await navigator.share({ files: [file] }); } catch {}
+    return;
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(file);
+  a.download = file.name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+});
+
+/* ---------- Settings & navigation ---------- */
+
+function openSettings() {
+  state.returnTo = state.screen === 'settings' ? state.returnTo : state.screen;
+  $('api-key').value = store.get('groqKey', '');
+  $('max-words').value = state.style.maxWords;
+  show('settings');
+}
+
+$('btn-settings').addEventListener('click', openSettings);
+
+$('btn-settings-done').addEventListener('click', () => {
+  store.set('groqKey', $('api-key').value.trim());
+  const mw = Math.min(8, Math.max(1, Number($('max-words').value) || defaultStyle.maxWords));
+  if (mw !== state.style.maxWords) {
+    state.style.maxWords = mw;
+    store.set('maxWords', mw);
+    if (state.chunks.length) {
+      state.chunks = groupWords(flatten(state.chunks), state.style);
+      renderList();
+    }
+  }
+  show(state.returnTo === 'busy' ? 'start' : state.returnTo);
+});
+
+$('btn-back').addEventListener('click', () => {
+  if (state.screen === 'settings') { $('btn-settings-done').click(); return; }
+  if (state.screen === 'busy') { show('editor'); return; }
+  if (state.screen === 'editor' && confirm('Video verwerfen und neu starten?')) show('start');
+});
+
+document.fonts.load(`${state.style.weight} 40px "${state.style.font}"`).catch(() => {});
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+
+show('start');
