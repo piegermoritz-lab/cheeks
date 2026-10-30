@@ -1,8 +1,8 @@
-const CACHE = 'tricaps-v7';
+const CACHE = 'tricaps-v8';
 const SHELL = [
   './', 'index.html', 'app.css', 'manifest.webmanifest',
   'js/app.js', 'js/audio.js', 'js/transcribe.js', 'js/captions.js', 'js/render.js',
-  'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png',
+  'icons/favicon-32.png', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png',
 ];
 
 self.addEventListener('install', e => {

@@ -47,7 +47,7 @@ html, body {
   background: var(--bg);
   border-bottom: 1px solid var(--line);
 }
-.bar h1 { flex: 1; margin: 0; font-size: 20px; font-weight: 800; letter-spacing: -.02em; }
+.bar h1 { flex: 1; margin: 0; font: 800 21px/1 Montserrat, sans-serif; letter-spacing: -.04em; }
 .logo span { color: var(--active); }
 
 .icon-btn {
