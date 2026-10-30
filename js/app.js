@@ -1,7 +1,7 @@
-import { extractWav } from './audio.js?v=11';
-import { transcribe } from './transcribe.js?v=11';
-import { defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption } from './captions.js?v=11';
-import { renderVideo } from './render.js?v=11';
+import { extractWav } from './audio.js?v=12';
+import { transcribe } from './transcribe.js?v=12';
+import { defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption } from './captions.js?v=12';
+import { renderVideo } from './render.js?v=12';
 
 const $ = id => document.getElementById(id);
 
@@ -19,6 +19,7 @@ const state = {
     ...defaultStyle,
     maxWords: Number(store.get('maxWords', defaultStyle.maxWords)),
     posY: Number(store.get('posY', defaultStyle.posY)),
+    size: Number(store.get('size', defaultStyle.size)),
   },
   result: null,
   rendering: false,
@@ -100,15 +101,42 @@ function sizeOverlay() {
 }
 window.addEventListener('resize', sizeOverlay);
 
-$('pos-y').value = state.style.posY;
-$('pos-y').addEventListener('input', e => {
-  state.style.posY = Number(e.target.value);
-  store.set('posY', state.style.posY);
-});
+// While adjusting, show a sample caption even if none is on screen at the current time.
+let adjustUntil = 0;
 
-stage.addEventListener('click', () => {
-  if (preview.paused) preview.play(); else preview.pause();
+function setStyle(key, value) {
+  state.style[key] = value;
+  store.set(key, value);
+  adjustUntil = performance.now() + 1200;
+}
+
+$('pos-y').value = state.style.posY;
+$('pos-y').addEventListener('input', e => setStyle('posY', Number(e.target.value)));
+$('size').value = state.style.size;
+$('size').addEventListener('input', e => setStyle('size', Number(e.target.value)));
+
+// Drag the caption up/down on the preview; a tap without movement plays/pauses.
+let drag = null;
+stage.addEventListener('pointerdown', e => {
+  drag = { y: e.clientY, pos: state.style.posY, moved: false };
+  stage.setPointerCapture(e.pointerId);
 });
+stage.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const dy = e.clientY - drag.y;
+  if (!drag.moved && Math.abs(dy) < 6) return;
+  drag.moved = true;
+  const pos = Math.min(0.95, Math.max(0.08, drag.pos + dy / stage.clientHeight));
+  setStyle('posY', pos);
+  $('pos-y').value = pos;
+});
+stage.addEventListener('pointerup', () => {
+  if (drag && !drag.moved) {
+    if (preview.paused) preview.play(); else preview.pause();
+  }
+  drag = null;
+});
+stage.addEventListener('pointercancel', () => { drag = null; });
 
 let activeChunk = null;
 function tick() {
@@ -116,7 +144,9 @@ function tick() {
     const ctx = overlay.getContext('2d');
     ctx.clearRect(0, 0, overlay.width, overlay.height);
     const t = preview.currentTime;
-    drawCaption(ctx, overlay.width, overlay.height, state.chunks, t, state.style);
+    const sample = !chunkAt(state.chunks, t) && performance.now() < adjustUntil && state.chunks[0];
+    if (sample) drawCaption(ctx, overlay.width, overlay.height, [sample], sample.start, state.style);
+    else drawCaption(ctx, overlay.width, overlay.height, state.chunks, t, state.style);
     const c = chunkAt(state.chunks, t);
     if (c !== activeChunk) {
       activeChunk = c;
