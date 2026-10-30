@@ -1,10 +1,10 @@
-import { extractAudio } from './audio.js?v=21';
-import { transcribe } from './transcribe.js?v=21';
+import { extractAudio } from './audio.js?v=22';
+import { transcribe } from './transcribe.js?v=22';
 import {
   defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption, splitChunk, mergeWithNext, moveEdge,
-} from './captions.js?v=21';
-import { renderVideo } from './render.js?v=21';
-import { renderFast } from './render-fast.js?v=21';
+} from './captions.js?v=22';
+import { renderVideo } from './render.js?v=22';
+import { renderFast } from './render-fast.js?v=22';
 
 const $ = id => document.getElementById(id);
 
@@ -141,7 +141,8 @@ function buildTimeline() {
   buildThumbs();
 }
 
-// Frames are grabbed with a second, hidden video element by seeking; a capped number of frames is reused across tiles.
+// Thumbnails come straight from the file via WebCodecs (works on iOS, where drawing a hidden <video> stays blank).
+// A hidden <video> is the fallback; if neither yields frames the strip is hidden and only captions remain.
 let thumbJob = 0;
 async function buildThumbs() {
   const job = ++thumbJob;
@@ -157,25 +158,80 @@ async function buildThumbs() {
   thumbs.width = Math.round(trackW * scale);
   thumbs.height = Math.round(tileH * dpr);
   thumbs.style.width = `${trackW}px`;
+  track.classList.remove('no-thumbs');
   const ctx = thumbs.getContext('2d');
   ctx.clearRect(0, 0, thumbs.width, thumbs.height);
 
   const tiles = Math.ceil(trackW / tileW);
-  const frames = Math.min(tiles, 30);
-  const v = el('video', { muted: true, playsInline: true, preload: 'auto', src: state.url });
-  v.muted = true;
-  await new Promise(r => { v.addEventListener('loadeddata', r, { once: true }); v.load(); });
-  for (let f = 0; f < frames && job === thumbJob; f++) {
-    const t = Math.min(dur - 0.05, ((f + 0.5) / frames) * dur);
-    await new Promise(r => { v.addEventListener('seeked', r, { once: true }); v.currentTime = t; });
-    if (job !== thumbJob) break;
+  const count = Math.min(tiles, 30);
+  const times = Array.from({ length: count }, (_, f) => Math.min(dur - 0.05, ((f + 0.5) / count) * dur));
+  let drawn = 0;
+  const paint = (img, f) => {
+    if (job !== thumbJob) return false;
     for (let k = 0; k < tiles; k++) {
-      if (Math.min(frames - 1, Math.floor((k / tiles) * frames)) !== f) continue;
-      ctx.drawImage(v, k * tileW * scale, 0, tileW * scale, thumbs.height);
+      if (Math.min(count - 1, Math.floor((k / tiles) * count)) === f) {
+        ctx.drawImage(img, k * tileW * scale, 0, tileW * scale, thumbs.height);
+      }
+    }
+    if (drawn++ === 0 && looksBlank(ctx, tileW * scale)) throw new Error('blank frame');
+    return true;
+  };
+
+  for (const source of [framesFromFile, framesFromVideo]) {
+    try {
+      drawn = 0;
+      await source(times, Math.round(tileW * dpr), Math.round(tileH * dpr), paint);
+      if (drawn > 0 || job !== thumbJob) return;
+    } catch (err) {
+      console.warn('Thumbnail source failed', err);
+      ctx.clearRect(0, 0, thumbs.width, thumbs.height);
     }
   }
-  v.removeAttribute('src');
-  v.load();
+  if (job === thumbJob) track.classList.add('no-thumbs');
+}
+
+// Samples a few pixels of the first tile; a blank or single-colour result means the source gave no real frame.
+function looksBlank(ctx, tileWidth) {
+  const px = [[0.2, 0.3], [0.5, 0.5], [0.8, 0.7]].map(([x, y]) =>
+    [...ctx.getImageData(Math.floor(tileWidth * x), Math.floor(ctx.canvas.height * y), 1, 1).data]);
+  return px.every(p => p[3] === 0) || px.every(p => p.join() === px[0].join());
+}
+
+async function framesFromFile(times, w, h, paint) {
+  const mb = await import('./vendor/mediabunny-1.64.0.min.mjs');
+  const input = new mb.Input({ source: new mb.BlobSource(state.file), formats: mb.ALL_FORMATS });
+  const vt = await input.getPrimaryVideoTrack();
+  if (!vt || !(await vt.canDecode())) throw new Error('cannot decode');
+  const sink = new mb.CanvasSink(vt, { width: w, height: h, fit: 'cover' });
+  let f = 0;
+  for await (const wrapped of sink.canvasesAtTimestamps(times)) {
+    if (wrapped && !paint(wrapped.canvas, f)) return;
+    f++;
+  }
+}
+
+async function framesFromVideo(times, w, h, paint) {
+  const v = el('video', { muted: true, playsInline: true, preload: 'auto', src: state.url });
+  v.muted = true;
+  Object.assign(v.style, { position: 'fixed', left: '0', top: '0', width: '2px', height: '2px', opacity: '0', pointerEvents: 'none' });
+  document.body.append(v);
+  try {
+    await new Promise((resolve, reject) => {
+      v.addEventListener('loadeddata', resolve, { once: true });
+      v.addEventListener('error', reject, { once: true });
+    });
+    // iOS only paints frames of a video that has played at least once.
+    await v.play().catch(() => {});
+    v.pause();
+    for (const [f, t] of times.entries()) {
+      await new Promise(r => { v.addEventListener('seeked', r, { once: true }); v.currentTime = t; });
+      if (!paint(v, f)) return;
+    }
+  } finally {
+    v.removeAttribute('src');
+    v.load();
+    v.remove();
+  }
 }
 
 function renderBlocks() {
@@ -412,28 +468,74 @@ for (const [id, key] of [['pos-y', 'posY'], ['size', 'size']]) {
   input.addEventListener('change', () => endChange('slider'));
 }
 
-// Drag the caption up/down on the preview; a tap without movement plays/pauses.
+// One finger drags the caption up/down, two fingers pinch to resize it, a tap without movement plays/pauses.
+const pointers = new Map();
 let drag = null;
+let pinch = null;
+let gestureMoved = false;
+
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const fingerGap = () => {
+  const [a, b] = [...pointers.values()];
+  return { dist: Math.hypot(a.x - b.x, a.y - b.y), midY: (a.y + b.y) / 2 };
+};
+
 stage.addEventListener('pointerdown', e => {
-  drag = { y: e.clientY, pos: state.style.posY, moved: false };
   stage.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size === 1) {
+    gestureMoved = false;
+    drag = { y: e.clientY, pos: state.style.posY };
+  } else if (pointers.size === 2) {
+    drag = null;
+    gestureMoved = true;
+    const { dist, midY } = fingerGap();
+    pinch = { dist: Math.max(10, dist), midY, size: state.style.size, pos: state.style.posY };
+    beginChange('pinch');
+  }
 });
+
 stage.addEventListener('pointermove', e => {
+  if (!pointers.has(e.pointerId)) return;
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pinch && pointers.size >= 2) {
+    const { dist, midY } = fingerGap();
+    const size = clamp(pinch.size * (dist / pinch.dist), 0.03, 0.2);
+    const pos = clamp(pinch.pos + (midY - pinch.midY) / stage.clientHeight, 0.08, 0.95);
+    setStyle('size', size);
+    setStyle('posY', pos);
+    setSlider($('size'), size);
+    setSlider($('pos-y'), pos);
+    return;
+  }
   if (!drag) return;
   const dy = e.clientY - drag.y;
-  if (!drag.moved && Math.abs(dy) < 6) return;
-  if (!drag.moved) beginChange('drag');
-  drag.moved = true;
-  const pos = Math.min(0.95, Math.max(0.08, drag.pos + dy / stage.clientHeight));
+  if (!gestureMoved && Math.abs(dy) < 6) return;
+  if (!gestureMoved) beginChange('drag');
+  gestureMoved = true;
+  const pos = clamp(drag.pos + dy / stage.clientHeight, 0.08, 0.95);
   setStyle('posY', pos);
   setSlider($('pos-y'), pos);
 });
-stage.addEventListener('pointerup', () => {
-  if (drag && !drag.moved) togglePlay();
+
+function releasePointer(e) {
+  if (!pointers.delete(e.pointerId)) return;
+  if (pointers.size > 0) {
+    // Lifting one finger of a pinch ends the pinch; the other finger doesn't start a drag.
+    if (pinch) { pinch = null; endChange('pinch'); }
+    drag = null;
+    return;
+  }
+  if (e.type === 'pointerup' && !gestureMoved) togglePlay();
   drag = null;
+  pinch = null;
   endChange('drag');
-});
-stage.addEventListener('pointercancel', () => { drag = null; endChange('drag'); });
+  endChange('pinch');
+}
+stage.addEventListener('pointerup', releasePointer);
+stage.addEventListener('pointercancel', releasePointer);
+// Keep iOS from zooming the whole page during a pinch on the preview.
+stage.addEventListener('gesturestart', e => e.preventDefault());
 
 /* Frame loop */
 
