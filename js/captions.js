@@ -11,7 +11,7 @@ export const defaultStyle = {
   stroke: null,
   strokeWidth: 0,       // outline thickness as fraction of font size
   shadow: null,
-  lowercase: true,
+  lowercase: false,
   uppercase: false,
   stripPunctuation: false,
   pop: false,
