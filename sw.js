@@ -1,4 +1,4 @@
-const CACHE = 'cheeks-v1';
+const CACHE = 'cheeks-v2';
 const SHELL = [
   './', 'index.html', 'app.css', 'manifest.webmanifest',
   'js/app.js', 'js/audio.js', 'js/transcribe.js', 'js/captions.js', 'js/render.js',

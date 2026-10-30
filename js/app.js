@@ -228,6 +228,13 @@ function openSettings() {
 
 $('btn-settings').addEventListener('click', openSettings);
 
+$('btn-theme').addEventListener('click', () => {
+  const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+  document.documentElement.dataset.theme = next;
+  document.querySelector('meta[name="theme-color"]').content = next === 'light' ? '#f2f2f4' : '#1c1c1e';
+  store.set('theme', next);
+});
+
 $('btn-settings-done').addEventListener('click', () => {
   store.set('groqKey', $('api-key').value.trim());
   const mw = Math.min(8, Math.max(1, Number($('max-words').value) || defaultStyle.maxWords));
