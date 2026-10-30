@@ -1,7 +1,7 @@
-import { extractWav } from './audio.js?v=3';
-import { transcribe } from './transcribe.js?v=3';
-import { defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption } from './captions.js?v=3';
-import { renderVideo } from './render.js?v=3';
+import { extractWav } from './audio.js?v=4';
+import { transcribe } from './transcribe.js?v=4';
+import { defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption } from './captions.js?v=4';
+import { renderVideo } from './render.js?v=4';
 
 const $ = id => document.getElementById(id);
 
@@ -189,7 +189,7 @@ async function runExport() {
       onProgress: p => { $('busy-bar').style.width = `${Math.round(p * 100)}%`; },
     });
     const ext = blob.type.includes('webm') ? 'webm' : 'mp4';
-    state.result = new File([blob], `cheeks-${Date.now()}.${ext}`, { type: blob.type });
+    state.result = new File([blob], `tricaps-${Date.now()}.${ext}`, { type: blob.type });
     setBusy('Fertig!', 1, 'Tippe auf Speichern und wähle «Video sichern».');
     document.querySelector('.spinner').classList.add('done');
     $('btn-save').hidden = false;

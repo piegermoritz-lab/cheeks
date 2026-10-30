@@ -1,6 +1,6 @@
 {
-  "name": "Cheeks Captions",
-  "short_name": "Cheeks",
+  "name": "tricaps",
+  "short_name": "tricaps",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

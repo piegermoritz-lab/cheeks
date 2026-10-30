@@ -1,4 +1,4 @@
-# Cheeks
+# tricaps
 
 Captions app for my videos, built for the iPhone. Speech in Swiss German becomes High German captions burned into the video.
 
