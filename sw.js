@@ -1,4 +1,4 @@
-const CACHE = 'cheeks-v2';
+const CACHE = 'cheeks-v3';
 const SHELL = [
   './', 'index.html', 'app.css', 'manifest.webmanifest',
   'js/app.js', 'js/audio.js', 'js/transcribe.js', 'js/captions.js', 'js/render.js',
@@ -25,7 +25,7 @@ self.addEventListener('fetch', e => {
   const cacheable = url.origin === location.origin || url.host.endsWith('fonts.googleapis.com') || url.host.endsWith('fonts.gstatic.com');
   if (!cacheable) return;
   e.respondWith(
-    fetch(request)
+    fetch(request, { cache: 'no-cache' })
       .then(res => {
         if (res.ok) {
           const copy = res.clone();
@@ -33,6 +33,6 @@ self.addEventListener('fetch', e => {
         }
         return res;
       })
-      .catch(() => caches.match(request)),
+      .catch(() => caches.match(request, { ignoreSearch: true })),
   );
 });

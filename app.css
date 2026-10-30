@@ -63,9 +63,9 @@ html, body {
 :root[data-theme="light"] .chunk,
 :root[data-theme="light"] .field input { box-shadow: 0 1px 2px rgba(0, 0, 0, .06); }
 
-#btn-theme .moon { display: none; }
-:root[data-theme="light"] #btn-theme .sun { display: none; }
-:root[data-theme="light"] #btn-theme .moon { display: block; }
+#btn-theme .sun { display: none; }
+:root[data-theme="light"] #btn-theme .moon { display: none; }
+:root[data-theme="light"] #btn-theme .sun { display: block; }
 
 main { padding: 16px 16px calc(env(safe-area-inset-bottom) + 16px); }
 

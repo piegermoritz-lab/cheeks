@@ -8,7 +8,7 @@
     (function () {
       var t = null;
       try { t = localStorage.getItem('theme'); } catch (e) {}
-      if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      if (t !== 'light') t = 'dark';
       document.documentElement.dataset.theme = t;
       document.querySelector('meta[name="theme-color"]').content = t === 'light' ? '#f2f2f4' : '#1c1c1e';
     })();
@@ -24,7 +24,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@800;900&display=swap">
-  <link rel="stylesheet" href="app.css">
+  <link rel="stylesheet" href="app.css?v=3">
 </head>
 <body>
   <header class="bar">
@@ -83,6 +83,6 @@
     </section>
   </main>
 
-  <script type="module" src="js/app.js"></script>
+  <script type="module" src="js/app.js?v=3"></script>
 </body>
 </html>

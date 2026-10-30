@@ -1,7 +1,7 @@
-import { extractWav } from './audio.js';
-import { transcribe } from './transcribe.js';
-import { defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption } from './captions.js';
-import { renderVideo } from './render.js';
+import { extractWav } from './audio.js?v=3';
+import { transcribe } from './transcribe.js?v=3';
+import { defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption } from './captions.js?v=3';
+import { renderVideo } from './render.js?v=3';
 
 const $ = id => document.getElementById(id);
 
