@@ -1,10 +1,10 @@
-import { extractAudio } from './audio.js?v=19';
-import { transcribe } from './transcribe.js?v=19';
+import { extractAudio } from './audio.js?v=20';
+import { transcribe } from './transcribe.js?v=20';
 import {
   defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption, splitChunk, mergeWithNext, moveEdge,
-} from './captions.js?v=19';
-import { renderVideo } from './render.js?v=19';
-import { renderFast } from './render-fast.js?v=19';
+} from './captions.js?v=20';
+import { renderVideo } from './render.js?v=20';
+import { renderFast } from './render-fast.js?v=20';
 
 const $ = id => document.getElementById(id);
 
