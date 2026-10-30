@@ -1,10 +1,10 @@
-import { extractAudio } from './audio.js?v=26';
-import { transcribe } from './transcribe.js?v=26';
+import { extractAudio } from './audio.js?v=27';
+import { transcribe } from './transcribe.js?v=27';
 import {
   defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption, splitChunk, mergeWithNext, moveEdge,
-} from './captions.js?v=26';
-import { renderVideo } from './render.js?v=26';
-import { renderFast } from './render-fast.js?v=26';
+} from './captions.js?v=27';
+import { renderVideo } from './render.js?v=27';
+import { renderFast } from './render-fast.js?v=27';
 
 const $ = id => document.getElementById(id);
 
@@ -248,7 +248,7 @@ async function buildThumbs() {
   thumbs.height = Math.round(tileH * dpr);
   thumbs.style.width = `${trackW}px`;
   track.classList.remove('no-thumbs');
-  const ctx = thumbs.getContext('2d');
+  const ctx = thumbs.getContext('2d', { willReadFrequently: true });
   ctx.clearRect(0, 0, thumbs.width, thumbs.height);
 
   const tiles = Math.ceil(trackW / tileW);

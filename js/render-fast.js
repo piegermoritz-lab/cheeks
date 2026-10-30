@@ -1,4 +1,5 @@
-import { drawCaption } from './captions.js?v=26';
+import { drawCaption } from './captions.js?v=27';
+import { FPS, videoBitrate } from './render.js?v=27';
 
 const even = n => Math.max(2, Math.round(n / 2) * 2);
 
@@ -33,7 +34,8 @@ export async function renderFast({ file, chunks, style, onProgress }) {
         width: W,
         height: H,
         fit: 'fill',
-        quality: mb.QUALITY_VERY_HIGH,
+        quality: new mb.Quality({ bitrate: videoBitrate(W, H), bitrateMode: 'variable' }),
+        frameRate: FPS,
         forceTranscode: true,
         allowTransformationMetadata: false,
         process: sample => {

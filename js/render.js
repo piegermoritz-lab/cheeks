@@ -1,4 +1,11 @@
-import { drawCaption } from './captions.js?v=26';
+import { drawCaption } from './captions.js?v=27';
+
+export const FPS = 30;
+
+// 20 Mbit/s at 1080p (about what Apple uses for H.264 1080p30), scaled by pixel count and capped for 4K.
+export function videoBitrate(W, H) {
+  return Math.round(Math.min(60e6, 20e6 * Math.pow((W * H) / (1920 * 1080), 0.95)));
+}
 
 const MIME_TYPES = [
   'video/mp4;codecs=avc1.640028,mp4a.40.2',
@@ -39,13 +46,13 @@ export async function renderVideo({ url, chunks, style, audioCtx, onProgress }) 
     const dest = audioCtx.createMediaStreamDestination();
     src.connect(dest);
 
-    const stream = canvas.captureStream(30);
+    const stream = canvas.captureStream(FPS);
     dest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
 
     const mimeType = pickMime();
     const rec = new MediaRecorder(stream, {
       mimeType,
-      videoBitsPerSecond: Math.min(16e6, Math.max(4e6, W * H * 30 * 0.15)),
+      videoBitsPerSecond: videoBitrate(W, H),
       audioBitsPerSecond: 192e3,
     });
     const parts = [];
