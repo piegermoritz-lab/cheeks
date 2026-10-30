@@ -1,7 +1,7 @@
-import { extractWav } from './audio.js?v=6';
-import { transcribe } from './transcribe.js?v=6';
-import { defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption } from './captions.js?v=6';
-import { renderVideo } from './render.js?v=6';
+import { extractWav } from './audio.js?v=7';
+import { transcribe } from './transcribe.js?v=7';
+import { defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption } from './captions.js?v=7';
+import { renderVideo } from './render.js?v=7';
 
 const $ = id => document.getElementById(id);
 
@@ -41,7 +41,8 @@ function setBusy(text, progress = null, hint = '') {
   $('busy-bar').parentElement.hidden = progress === null;
   $('busy-bar').style.width = `${Math.round((progress ?? 0) * 100)}%`;
   $('btn-save').hidden = true;
-  document.querySelector('.spinner').classList.remove('done');
+  document.querySelector('.spinner').hidden = false;
+  $('done-check').hidden = true;
 }
 
 const fmt = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
@@ -190,8 +191,9 @@ async function runExport() {
     });
     const ext = blob.type.includes('webm') ? 'webm' : 'mp4';
     state.result = new File([blob], `tricaps-${Date.now()}.${ext}`, { type: blob.type });
-    setBusy('Fertig!', 1, 'Tippe auf Speichern und wähle «Video sichern».');
-    document.querySelector('.spinner').classList.add('done');
+    setBusy('Fertig!', null, 'Tippe auf Speichern und wähle «Video sichern».');
+    document.querySelector('.spinner').hidden = true;
+    $('done-check').hidden = false;
     $('btn-save').hidden = false;
     $('btn-back').hidden = false;
   } catch (err) {

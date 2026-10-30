@@ -25,6 +25,7 @@
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+[hidden] { display: none !important; }
 
 html, body {
   margin: 0;
@@ -57,7 +58,6 @@ html, body {
   display: grid; place-items: center;
   cursor: pointer;
 }
-.icon-btn[hidden] { display: none; }
 .icon-btn svg { width: 20px; height: 20px; }
 
 :root[data-theme="light"] .icon-btn,
@@ -71,7 +71,6 @@ html, body {
 main { padding: 16px 16px calc(env(safe-area-inset-bottom) + 16px); }
 
 .screen { display: flex; flex-direction: column; gap: 16px; }
-.screen[hidden] { display: none; }
 
 #screen-start, #screen-busy {
   min-height: 60dvh;
@@ -107,7 +106,22 @@ main { padding: 16px 16px calc(env(safe-area-inset-bottom) + 16px); }
   border: 4px solid var(--line); border-top-color: var(--accent);
   animation: spin 0.9s linear infinite;
 }
-.spinner.done { animation: none; border-color: var(--accent); }
+
+.check { width: 72px; height: 72px; overflow: visible; animation: check-pop .35s ease-out .75s both; }
+.check circle {
+  fill: none; stroke: var(--accent); stroke-width: 3;
+  stroke-dasharray: 151; stroke-dashoffset: 151;
+  transform: rotate(-90deg); transform-origin: center;
+  animation: check-draw .5s ease-out forwards, check-fill .3s ease-out .5s forwards;
+}
+.check path {
+  fill: none; stroke: #fff; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round;
+  stroke-dasharray: 36; stroke-dashoffset: 36;
+  animation: check-draw .35s ease-out .55s forwards;
+}
+@keyframes check-draw { to { stroke-dashoffset: 0; } }
+@keyframes check-fill { to { fill: var(--accent); } }
+@keyframes check-pop { 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .progress { width: 100%; height: 8px; border-radius: 4px; background: var(--panel); overflow: hidden; }

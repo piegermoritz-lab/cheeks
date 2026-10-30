@@ -15,7 +15,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@800;900&display=swap">
-  <link rel="stylesheet" href="app.css?v=6">
+  <link rel="stylesheet" href="app.css?v=7">
 </head>
 <body>
   <header class="bar">
@@ -43,6 +43,12 @@
 
     <section id="screen-busy" class="screen" hidden>
       <div class="spinner"></div>
+      <div id="done-check" hidden>
+        <svg class="check" viewBox="0 0 52 52" aria-hidden="true">
+          <circle cx="26" cy="26" r="24"/>
+          <path d="M15 27.5l7.5 7.5L37.5 19"/>
+        </svg>
+      </div>
       <p id="busy-text">Arbeite…</p>
       <div class="progress"><div id="busy-bar"></div></div>
       <button id="btn-save" class="big-btn" hidden>Speichern / Teilen</button>
@@ -74,6 +80,6 @@
     </section>
   </main>
 
-  <script type="module" src="js/app.js?v=6"></script>
+  <script type="module" src="js/app.js?v=7"></script>
 </body>
 </html>
