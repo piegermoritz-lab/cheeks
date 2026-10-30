@@ -1,10 +1,10 @@
-import { extractAudio } from './audio.js?v=22';
-import { transcribe } from './transcribe.js?v=22';
+import { extractAudio } from './audio.js?v=23';
+import { transcribe } from './transcribe.js?v=23';
 import {
   defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption, splitChunk, mergeWithNext, moveEdge,
-} from './captions.js?v=22';
-import { renderVideo } from './render.js?v=22';
-import { renderFast } from './render-fast.js?v=22';
+} from './captions.js?v=23';
+import { renderVideo } from './render.js?v=23';
+import { renderFast } from './render-fast.js?v=23';
 
 const $ = id => document.getElementById(id);
 
@@ -118,6 +118,18 @@ function openEditor() {
 preview.addEventListener('loadedmetadata', () => {
   layoutStage();
   buildTimeline();
+});
+
+// iOS shows a black box until a video has played once, so play it muted for an instant and stop on the first frame.
+preview.addEventListener('loadeddata', async () => {
+  if (preview.played.length) return;
+  preview.muted = true;
+  try {
+    await preview.play();
+    preview.pause();
+  } catch {}
+  preview.muted = false;
+  preview.currentTime = playhead;
 });
 
 // Fit the preview into whatever space is left above the timeline.

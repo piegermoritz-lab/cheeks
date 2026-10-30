@@ -183,7 +183,7 @@ body.editing main { flex: 1; min-height: 0; display: flex; flex-direction: colum
   display: flex; align-items: center; overflow: hidden;
   border-radius: 8px; background: rgba(14, 62, 255, .22); color: var(--text);
   font-size: 13px; font-weight: 600; white-space: nowrap; text-overflow: ellipsis;
-  box-shadow: inset 0 0 0 1px rgba(14, 62, 255, .55); cursor: pointer;
+  box-shadow: inset 0 0 0 1.5px #0a2bb8; cursor: pointer;
   transition: background .15s;
 }
 .cap span { overflow: hidden; text-overflow: ellipsis; }
