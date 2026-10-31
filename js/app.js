@@ -1,11 +1,12 @@
-import { extractAudio } from './audio.js?v=30';
-import { transcribe } from './transcribe.js?v=30';
-import { DEFAULT_DICTIONARY } from './dictionary.js?v=30';
+import { extractAudio } from './audio.js?v=31';
+import { transcribe } from './transcribe.js?v=31';
+import { DEFAULT_DICTIONARY } from './dictionary.js?v=31';
 import {
   defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption, splitChunk, mergeWithNext, moveEdge,
-} from './captions.js?v=30';
-import { renderVideo } from './render.js?v=30';
-import { renderFast } from './render-fast.js?v=30';
+} from './captions.js?v=31';
+import { renderVideo } from './render.js?v=31';
+import { renderFast } from './render-fast.js?v=31';
+import { ToneMapper } from './hdr.js?v=31';
 
 const $ = id => document.getElementById(id);
 
@@ -142,8 +143,12 @@ async function probeMedia(file, url) {
       width: vt.displayWidth,
       height: vt.displayHeight,
       first: await vt.getFirstTimestamp(),
-      sink: (await vt.canDecode()) ? new mb.CanvasSink(vt) : null,
+      hdr: await vt.hasHighDynamicRange(),
+      rotation: vt.rotation ?? 0,
+      colorSpace: await vt.getColorSpace(),
+      sink: null,
     };
+    if (await vt.canDecode()) media.sink = media.hdr ? new mb.VideoSampleSink(vt) : new mb.CanvasSink(vt);
     if (state.url !== url) return;
     state.media = media;
     layoutStage();
@@ -164,6 +169,7 @@ const frameCanvas = $('frame');
 let frameWanted = null;
 let frameBusy = false;
 let frameShown = -1;
+let frameMapper = null;
 
 async function requestFrame(t) {
   if (!state.media?.sink) return;
@@ -174,11 +180,25 @@ async function requestFrame(t) {
     while (frameWanted !== null) {
       const want = frameWanted;
       frameWanted = null;
-      const wrapped = await state.media.sink.getCanvas(Math.max(want, state.media.first));
+      const t = Math.max(want, state.media.first);
+      let image = null;
+      if (state.media.hdr) {
+        const sample = await state.media.sink.getSample(t);
+        if (sample) {
+          if (frameMapper?.canvas.width !== frameCanvas.width || frameMapper?.canvas.height !== frameCanvas.height) {
+            frameMapper = new ToneMapper(frameCanvas.width, frameCanvas.height);
+          }
+          await frameMapper.drawSample(sample, state.media.rotation);
+          sample.close();
+          image = frameMapper.canvas;
+        }
+      } else {
+        image = (await state.media.sink.getCanvas(t))?.canvas;
+      }
       frameShown = want;
-      if (!wrapped || !preview.paused || frameWanted !== null) continue;
+      if (!image || !preview.paused || frameWanted !== null) continue;
       const ctx = frameCanvas.getContext('2d');
-      ctx.drawImage(wrapped.canvas, 0, 0, frameCanvas.width, frameCanvas.height);
+      ctx.drawImage(image, 0, 0, frameCanvas.width, frameCanvas.height);
       frameCanvas.hidden = false;
     }
   } catch (err) {
@@ -718,7 +738,10 @@ async function runExport() {
   try {
     await document.fonts.load(`${state.style.weight} 40px ${state.style.font}`);
     const onProgress = p => { $('busy-bar').style.width = `${Math.round(p * 100)}%`; };
-    const job = { file: state.file, url: state.url, chunks: state.chunks, style: state.style, audioCtx, onProgress };
+    const job = {
+      file: state.file, url: state.url, chunks: state.chunks, style: state.style, audioCtx, onProgress,
+      colorSpace: state.media?.colorSpace,
+    };
     let blob = null;
     try {
       blob = await renderFast(job);

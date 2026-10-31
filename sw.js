@@ -1,7 +1,7 @@
-const CACHE = 'tricaps-v30';
+const CACHE = 'tricaps-v31';
 const SHELL = [
   './', 'index.html', 'app.css', 'manifest.webmanifest',
-  'js/app.js', 'js/audio.js', 'js/transcribe.js', 'js/dictionary.js', 'js/captions.js', 'js/render.js', 'js/render-fast.js',
+  'js/app.js', 'js/audio.js', 'js/transcribe.js', 'js/dictionary.js', 'js/captions.js', 'js/render.js', 'js/render-fast.js', 'js/hdr.js',
   'icons/favicon-light.png', 'icons/favicon-dark.png', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png',
 ];
 

@@ -1,5 +1,6 @@
-import { drawCaption } from './captions.js?v=30';
-import { FPS, videoBitrate } from './render.js?v=30';
+import { drawCaption } from './captions.js?v=31';
+import { FPS, videoBitrate } from './render.js?v=31';
+import { ToneMapper, drawUpright } from './hdr.js?v=31';
 
 const even = n => Math.max(2, Math.round(n / 2) * 2);
 
@@ -12,9 +13,10 @@ export async function renderFast({ file, chunks, style, onProgress }) {
   const probe = new mb.Input({ source: new mb.BlobSource(file), formats: mb.ALL_FORMATS });
   const track = await probe.getPrimaryVideoTrack();
   if (!track || !(await track.canDecode())) return null;
-  // Explicit output size: some encoders reject the source's codec profile unless Mediabunny picks the config itself.
-  const W = even(track.displayWidth);
+    const W = even(track.displayWidth);
   const H = even(track.displayHeight);
+  const hdr = await track.hasHighDynamicRange();
+  const rotation = track.rotation ?? 0;
 
   for (const codec of ['avc', 'vp9']) {
     if (!(await mb.canEncodeVideo(codec, { width: W, height: H }))) continue;
@@ -24,6 +26,8 @@ export async function renderFast({ file, chunks, style, onProgress }) {
     const output = new mb.Output({ format: new mb.Mp4OutputFormat({ fastStart: 'in-memory' }), target });
     const canvas = new OffscreenCanvas(W, H);
     const ctx = canvas.getContext('2d');
+    // HDR (e.g. iPhone HLG) is converted to SDR ourselves; letting the browser do it looks washed out.
+    const mapper = hdr ? new ToneMapper(W, H) : null;
 
     const conversion = await mb.Conversion.init({
       input,
@@ -31,15 +35,22 @@ export async function renderFast({ file, chunks, style, onProgress }) {
       showWarnings: false,
       video: {
         codec,
-        width: W,
-        height: H,
-        fit: 'fill',
         quality: new mb.Quality({ bitrate: videoBitrate(W, H), bitrateMode: 'variable' }),
         frameRate: FPS,
         forceTranscode: true,
+        // Undo the track's own rotation so process() gets the untouched decoded frame (incl. raw HDR planes);
+        // drawing / tone mapping applies the rotation itself and writes upright frames.
+        rotate: (360 - rotation) % 360,
         allowTransformationMetadata: false,
-        process: sample => {
-          sample.draw(ctx, 0, 0, W, H);
+        processedWidth: W,
+        processedHeight: H,
+        process: async sample => {
+          if (mapper) {
+            await mapper.drawSample(sample, rotation);
+            ctx.drawImage(mapper.canvas, 0, 0, W, H);
+          } else {
+            drawUpright(ctx, sample, W, H, rotation);
+          }
           drawCaption(ctx, W, H, chunks, sample.timestamp, style);
           return canvas;
         },

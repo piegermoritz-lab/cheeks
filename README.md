@@ -16,7 +16,9 @@ Captions app for my videos, built for the iPhone. Speech in Swiss German becomes
 - `js/transcribe.js` sends the audio to Groq (`whisper-large-v3`, language `de`) and gets word timestamps back. ß is always replaced by ss.
 - `js/dictionary.js` holds the default dictionary (names, places, triathlon terms, Swiss German slips). Terms are sent to Whisper as spelling hints; `wrong = right` lines are replaced after transcription. Edit it in that file.
 - `js/captions.js` groups the words into captions and holds the caption style (`defaultStyle`).
-- `js/render.js` plays the video once in real time, draws each frame plus captions onto a canvas and records it with MediaRecorder. The export therefore takes as long as the video.
+- `js/hdr.js` converts HDR footage (iPhone HLG, also PQ) to SDR BT.709 on the GPU following BT.2408, from the raw decoded YUV where the browser allows it. Used for export and editor still frames, so iPhone HDR clips don't come out washed out.
+- `js/render-fast.js` decodes, captions and re-encodes with WebCodecs (H.264, 30 fps, ~20 Mbit/s at 1080p); audio is copied.
+- `js/render.js` is the fallback: it plays the video once in real time and records the captioned canvas with MediaRecorder.
 
 No build step: it's plain HTML/CSS/JS. Vercel deploys every push automatically.
 
