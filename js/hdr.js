@@ -461,51 +461,68 @@ export class Grade {
    HLG clip with 16 known gray levels (same codec and tagging as iPhone footage) is decoded the same way; the inverse
    of what comes out restores the HLG signal, which ToneMapper then converts properly. */
 
-const decoderCache = new Map();
+const DECODER_CLIPS = ['assets/hlg-ramp-hev1.mp4', 'assets/hlg-ramp-hvc1.mp4'];
+let decoderPromise = null;
 
-export function decoderLut(mb, url = 'assets/hlg-ramp.mp4', force = false) {
-  const key = `${url}|${force}`;
-  if (!decoderCache.has(key)) decoderCache.set(key, measureDecoder(mb, url, force).catch(err => {
-    console.warn('Decoder calibration failed', err);
+// Inverse decoder response for HLG, or null when frames arrive as raw HDR (or can't be measured).
+export function decoderLut(mb) {
+  decoderPromise ??= (async () => {
+    for (const url of DECODER_CLIPS) {
+      const r = await inspectDecoder(mb, url);
+      if (r.lut) return r.lut;
+    }
     return null;
-  }));
-  return decoderCache.get(key);
+  })();
+  return decoderPromise;
 }
 
-export async function measureDecoder(mb, url, force = false) {
-  const blob = await (await fetch(url)).blob();
-  const input = new mb.Input({ source: new mb.BlobSource(blob), formats: mb.ALL_FORMATS });
-  const track = await input.getPrimaryVideoTrack();
-  if (!track || !(await track.canDecode())) return null;
-  const sample = await new mb.VideoSampleSink(track).getSample(0);
-  if (!sample) return null;
-  // Raw HDR frames are converted exactly anyway; no calibration needed.
-  if (isHdr(sample.colorSpace) && !force) {
+// Decodes a calibration clip and reports what came out; `force` measures even frames that arrive as raw HDR.
+export async function inspectDecoder(mb, url, force = false) {
+  const r = { url };
+  try {
+    const blob = await (await fetch(url)).blob();
+    const input = new mb.Input({ source: new mb.BlobSource(blob), formats: mb.ALL_FORMATS });
+    const track = await input.getPrimaryVideoTrack();
+    r.codec = await track.getCodecParameterString();
+    r.canDecode = await track.canDecode();
+    if (!r.canDecode) return r;
+    const sample = await new mb.VideoSampleSink(track).getSample(0);
+    if (!sample) {
+      r.error = 'no frame';
+      return r;
+    }
+    r.format = sample.format;
+    r.transfer = sample.colorSpace?.transfer;
+    if (isHdr(sample.colorSpace) && !force) {
+      sample.close();
+      return r;
+    }
+    const W = track.displayWidth;
+    const H = track.displayHeight;
+    const c = new OffscreenCanvas(W, H);
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    drawUpright(ctx, sample, W, H, track.rotation ?? 0);
     sample.close();
-    return null;
+    const bands = 16;
+    const out = Array.from({ length: bands }, (_, i) => {
+      const d = ctx.getImageData(Math.floor(((i + 0.5) * W) / bands), Math.floor(H / 2), 1, 1).data;
+      return (d[0] + d[1] + d[2]) / 3;
+    });
+    r.response = out.map(Math.round);
+    for (let i = 1; i < bands; i++) if (out[i] < out[i - 1]) return { ...r, error: 'not monotonic' };
+    if (out[bands - 1] - out[0] < 64) return { ...r, error: 'flat' };
+    const lut = new Float32Array(256);
+    let k = 0;
+    for (let o = 0; o < 256; o++) {
+      while (k < bands - 2 && out[k + 1] < o) k++;
+      const a = out[k];
+      const b = out[k + 1];
+      const t = b > a ? Math.min(1, Math.max(0, (o - a) / (b - a))) : 0;
+      lut[o] = (k + t) / (bands - 1);
+    }
+    r.lut = lut;
+  } catch (err) {
+    r.error = err.message;
   }
-  const W = track.displayWidth;
-  const H = track.displayHeight;
-  const c = new OffscreenCanvas(W, H);
-  const ctx = c.getContext('2d', { willReadFrequently: true });
-  drawUpright(ctx, sample, W, H, track.rotation ?? 0);
-  sample.close();
-  const bands = 16;
-  const out = Array.from({ length: bands }, (_, i) => {
-    const d = ctx.getImageData(Math.floor(((i + 0.5) * W) / bands), Math.floor(H / 2), 1, 1).data;
-    return (d[0] + d[1] + d[2]) / 3;
-  });
-  for (let i = 1; i < bands; i++) if (out[i] < out[i - 1]) return null;
-  if (out[bands - 1] - out[0] < 64) return null;
-  const lut = new Float32Array(256);
-  let k = 0;
-  for (let o = 0; o < 256; o++) {
-    while (k < bands - 2 && out[k + 1] < o) k++;
-    const a = out[k];
-    const b = out[k + 1];
-    const t = b > a ? Math.min(1, Math.max(0, (o - a) / (b - a))) : 0;
-    lut[o] = (k + t) / (bands - 1);
-  }
-  lut.response = out;
-  return lut;
+  return r;
 }

@@ -1,7 +1,7 @@
-import { ToneMapper, drawUpright, measureResponse, measureRoundTrip, gradeLut, measureDecoder } from './hdr.js?v=35';
+import { ToneMapper, drawUpright, measureResponse, measureRoundTrip, gradeLut, inspectDecoder, decoderLut } from './hdr.js?v=36';
 
 // Collects what this browser does with the loaded video's frames, to tune HDR handling on devices we can't test.
-export async function diagnose(file) {
+export async function diagnose(file, video) {
   const lines = [];
   const log = (k, v) => lines.push(`${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`);
   log('ua', navigator.userAgent.replace(/^Mozilla\/5\.0 /, ''));
@@ -62,16 +62,34 @@ export async function diagnose(file) {
   }
   sample.close();
 
-  try {
-    const lut = await measureDecoder(mb, 'assets/hlg-ramp.mp4');
-    log('decoder hlg', lut ? lut.response.map(Math.round).join(' ') : 'raw HDR or not decodable');
-    if (lut) {
-      const m = new ToneMapper(W, H);
-      m.drawDecodedSdr(await new mb.VideoSampleSink(vt).getSample(first + Math.min(1, dur / 2)), vt.rotation, lut);
-      log('mapper(decoded sdr)', read(m.canvas));
-    }
-  } catch (err) {
-    log('decoder hlg', `failed: ${err.message}`);
+  for (const url of ['assets/hlg-ramp-hev1.mp4', 'assets/hlg-ramp-hvc1.mp4']) {
+    const r = await inspectDecoder(mb, url, true);
+    const { lut, url: u, ...info } = r;
+    log(`clip ${u.split('-').pop()}`, { ...info, lut: !!lut });
+  }
+  const lut = await decoderLut(mb);
+  if (lut) {
+    const s2 = await new mb.VideoSampleSink(vt).getSample(first + Math.min(1, dur / 2));
+    const m = new ToneMapper(W, H);
+    m.drawDecodedSdr(s2, vt.rotation, lut);
+    s2.close();
+    log('mapper(decoded sdr)', read(m.canvas));
+  } else {
+    log('mapper(decoded sdr)', 'no calibration');
+  }
+
+  // What normal playback shows at the same moment (needs the video to have played once on iOS).
+  if (video?.readyState >= 2) {
+    const t = first + Math.min(1, dur / 2);
+    video.pause();
+    await new Promise(r => {
+      const timer = setTimeout(r, 3000);
+      video.addEventListener('seeked', () => { clearTimeout(timer); r(); }, { once: true });
+      video.currentTime = t;
+    });
+    log('video element', read(video));
+  } else {
+    log('video element', `not loaded (readyState ${video?.readyState})`);
   }
   for (const codec of ['avc']) {
     try {

@@ -1,6 +1,6 @@
-import { drawCaption } from './captions.js?v=35';
-import { FPS, videoBitrate } from './render.js?v=35';
-import { ToneMapper, drawUpright, isHdr, measureRoundTrip, gradeLut, Grade, decoderLut } from './hdr.js?v=35';
+import { drawCaption } from './captions.js?v=36';
+import { FPS, videoBitrate } from './render.js?v=36';
+import { ToneMapper, drawUpright, isHdr, measureRoundTrip, gradeLut, Grade, decoderLut } from './hdr.js?v=36';
 
 const even = n => Math.max(2, Math.round(n / 2) * 2);
 
