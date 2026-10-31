@@ -36,7 +36,7 @@ uniform usampler2D planeY;
 uniform usampler2D planeU;
 uniform usampler2D planeV;
 uniform sampler2D rgbTex;
-uniform int mode;          // 0 = planar YUV, 1 = semi-planar YUV (NV12), 2 = browser-rendered RGB
+uniform int mode;          // 0 = planar YUV, 1 = semi-planar YUV (NV12), 2 = browser-rendered RGB, 3 = as is
 uniform float codeScale;   // 2^(bit depth - 8)
 uniform bool fullRange;
 uniform int matrix;        // 0 = BT.2020, 1 = BT.709
@@ -79,6 +79,10 @@ vec2 sourceUv(vec2 uv) {
 }
 
 void main() {
+  if (mode == 3) {
+    outColor = vec4(texture(rgbTex, vUv).rgb, 1.0);
+    return;
+  }
   vec3 sig;
   if (mode == 2) {
     vec3 c = texture(rgbTex, vUv).rgb;
@@ -241,11 +245,13 @@ export class ToneMapper {
     gl.bindTexture(gl.TEXTURE_2D, this.textures[3]);
     gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
-    this.set('mode', 2);
+    const lut = this.lutFor(cs?.transfer);
+    // Without a trustworthy measurement a second conversion would only make things worse.
+    this.set('mode', lut ? 2 : 3);
     this.set('transfer', cs?.transfer === 'pq' ? 1 : 0);
     // Browsers that render HDR at all also map it into the canvas gamut.
     this.set('convertGamut', 0);
-    gl.uniform1fv(gl.getUniformLocation(this.program, 'lut'), this.lutFor(cs?.transfer));
+    if (lut) gl.uniform1fv(gl.getUniformLocation(this.program, 'lut'), lut);
     this.render();
   }
 
@@ -256,21 +262,25 @@ export class ToneMapper {
   }
 
   // Inverse of the browser's gray response for this transfer: browser output (0..255) -> HDR signal value.
+  // Null when it can't be measured, e.g. when the browser ignores the colour space of a synthetic frame (its
+  // response then matches plain SDR) while decoded frames do get converted.
   lutFor(transfer) {
-    if (this.luts[transfer]) return this.luts[transfer];
-    let lut;
+    if (transfer in this.luts) return this.luts[transfer];
+    let lut = null;
     try {
-      lut = measureInverseLut(transfer);
+      const hdr = measureResponse(transfer);
+      const sdr = measureResponse('bt709');
+      if (hdr.some((v, i) => Math.abs(v - sdr[i]) > 6)) lut = measureInverseLut(transfer);
     } catch (err) {
-      console.warn('Could not measure the browser HDR response, assuming none', err);
-      lut = Float32Array.from({ length: 256 }, (_, i) => i / 255);
+      console.warn('Could not measure the browser HDR response', err);
     }
     this.luts[transfer] = lut;
     return lut;
   }
 }
 
-function measureInverseLut(transfer) {
+// Browser output (average of R, G, B, 0..255) for a synthetic gray ramp of 256 signal levels in this transfer.
+export function measureResponse(transfer) {
   const N = 256;
   const data = new Uint8Array(N * 2 + (N / 2) * 2);
   for (let x = 0; x < N; x++) data[x] = data[N + x] = 16 + Math.round((219 * x) / (N - 1));
@@ -291,6 +301,12 @@ function measureInverseLut(transfer) {
   const px = ctx.getImageData(0, 0, N, 1).data;
   const out = [];
   for (let x = 0; x < N; x++) out.push((px[x * 4] + px[x * 4 + 1] + px[x * 4 + 2]) / 3);
+  return out;
+}
+
+function measureInverseLut(transfer) {
+  const N = 256;
+  const out = measureResponse(transfer);
   // Invert the (monotonic) response by linear interpolation.
   const lut = new Float32Array(256);
   let k = 0;

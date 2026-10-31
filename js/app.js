@@ -1,12 +1,12 @@
-import { extractAudio } from './audio.js?v=31';
-import { transcribe } from './transcribe.js?v=31';
-import { DEFAULT_DICTIONARY } from './dictionary.js?v=31';
+import { extractAudio } from './audio.js?v=33';
+import { transcribe } from './transcribe.js?v=33';
+import { DEFAULT_DICTIONARY } from './dictionary.js?v=33';
 import {
   defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption, splitChunk, mergeWithNext, moveEdge,
-} from './captions.js?v=31';
-import { renderVideo } from './render.js?v=31';
-import { renderFast } from './render-fast.js?v=31';
-import { ToneMapper } from './hdr.js?v=31';
+} from './captions.js?v=33';
+import { renderVideo } from './render.js?v=33';
+import { renderFast } from './render-fast.js?v=33';
+import { ToneMapper } from './hdr.js?v=33';
 
 const $ = id => document.getElementById(id);
 
@@ -789,10 +789,29 @@ function openSettings() {
   state.returnTo = state.screen === 'settings' ? state.returnTo : state.screen;
   $('api-key').value = store.get('groqKey', '');
   $('max-words').value = state.style.maxWords;
+  $('diag').hidden = !state.file;
   show('settings');
 }
 
 $('btn-settings').addEventListener('click', openSettings);
+
+$('btn-diag').addEventListener('click', async () => {
+  const out = $('diag-out');
+  out.hidden = false;
+  out.textContent = 'Läuft…';
+  try {
+    const { diagnose } = await import('./diag.js?v=33');
+    out.textContent = `export: ${state.exportPath ?? '–'}\n${await diagnose(state.file)}`;
+  } catch (err) {
+    out.textContent = `Diagnose fehlgeschlagen: ${err.message}`;
+  }
+  $('btn-diag-copy').hidden = false;
+});
+
+$('btn-diag-copy').addEventListener('click', () => {
+  navigator.clipboard?.writeText($('diag-out').textContent).catch(() => {});
+  $('btn-diag-copy').textContent = 'Kopiert';
+});
 
 $('btn-theme').addEventListener('click', () => {
   const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
