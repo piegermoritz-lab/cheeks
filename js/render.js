@@ -1,5 +1,5 @@
-import { drawCaption } from './captions.js?v=33';
-import { ToneMapper, isHdr } from './hdr.js?v=33';
+import { drawCaption } from './captions.js?v=34';
+import { ToneMapper, isHdr } from './hdr.js?v=34';
 
 export const FPS = 30;
 

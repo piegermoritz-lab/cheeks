@@ -1,12 +1,12 @@
-import { extractAudio } from './audio.js?v=33';
-import { transcribe } from './transcribe.js?v=33';
-import { DEFAULT_DICTIONARY } from './dictionary.js?v=33';
+import { extractAudio } from './audio.js?v=34';
+import { transcribe } from './transcribe.js?v=34';
+import { DEFAULT_DICTIONARY } from './dictionary.js?v=34';
 import {
   defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption, splitChunk, mergeWithNext, moveEdge,
-} from './captions.js?v=33';
-import { renderVideo } from './render.js?v=33';
-import { renderFast } from './render-fast.js?v=33';
-import { ToneMapper } from './hdr.js?v=33';
+} from './captions.js?v=34';
+import { renderVideo } from './render.js?v=34';
+import { renderFast } from './render-fast.js?v=34';
+import { ToneMapper, drawUpright, isHdr } from './hdr.js?v=34';
 
 const $ = id => document.getElementById(id);
 
@@ -148,7 +148,7 @@ async function probeMedia(file, url) {
       colorSpace: await vt.getColorSpace(),
       sink: null,
     };
-    if (await vt.canDecode()) media.sink = media.hdr ? new mb.VideoSampleSink(vt) : new mb.CanvasSink(vt);
+    if (await vt.canDecode()) media.sink = new mb.VideoSampleSink(vt);
     if (state.url !== url) return;
     state.media = media;
     layoutStage();
@@ -170,6 +170,7 @@ let frameWanted = null;
 let frameBusy = false;
 let frameShown = -1;
 let frameMapper = null;
+let stillCanvas = null;
 
 async function requestFrame(t) {
   if (!state.media?.sink) return;
@@ -182,18 +183,22 @@ async function requestFrame(t) {
       frameWanted = null;
       const t = Math.max(want, state.media.first);
       let image = null;
-      if (state.media.hdr) {
-        const sample = await state.media.sink.getSample(t);
-        if (sample) {
-          if (frameMapper?.canvas.width !== frameCanvas.width || frameMapper?.canvas.height !== frameCanvas.height) {
-            frameMapper = new ToneMapper(frameCanvas.width, frameCanvas.height);
-          }
+      const sample = await state.media.sink.getSample(t);
+      if (sample) {
+        const W = frameCanvas.width;
+        const H = frameCanvas.height;
+        if (isHdr(sample.colorSpace)) {
+          if (frameMapper?.canvas.width !== W || frameMapper?.canvas.height !== H) frameMapper = new ToneMapper(W, H);
           await frameMapper.drawSample(sample, state.media.rotation);
-          sample.close();
           image = frameMapper.canvas;
+        } else {
+          stillCanvas ??= document.createElement('canvas');
+          stillCanvas.width = W;
+          stillCanvas.height = H;
+          drawUpright(stillCanvas.getContext('2d'), sample, W, H, state.media.rotation);
+          image = stillCanvas;
         }
-      } else {
-        image = (await state.media.sink.getCanvas(t))?.canvas;
+        sample.close();
       }
       frameShown = want;
       if (!image || !preview.paused || frameWanted !== null) continue;
@@ -800,7 +805,7 @@ $('btn-diag').addEventListener('click', async () => {
   out.hidden = false;
   out.textContent = 'Läuft…';
   try {
-    const { diagnose } = await import('./diag.js?v=33');
+    const { diagnose } = await import('./diag.js?v=34');
     out.textContent = `export: ${state.exportPath ?? '–'}\n${await diagnose(state.file)}`;
   } catch (err) {
     out.textContent = `Diagnose fehlgeschlagen: ${err.message}`;

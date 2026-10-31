@@ -334,3 +334,114 @@ function link(gl, vs, fs) {
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
   return program;
 }
+
+/* Round-trip calibration: some browsers (Safari) colour-manage video differently on the way into the encoder than
+   on the way back out, so an exported clip plays brighter and paler than the canvas it was made from. Encoding a
+   few gray levels and decoding them again measures that drift; Grade applies the inverse before encoding. */
+
+const LEVELS = Array.from({ length: 16 }, (_, i) => Math.round((i * 255) / 15));
+
+export async function measureRoundTrip(mb, codec) {
+  const BAND = 16;
+  const W = BAND * LEVELS.length;
+  const H = 64;
+  const canvas = new OffscreenCanvas(W, H);
+  const ctx = canvas.getContext('2d');
+  LEVELS.forEach((v, i) => {
+    ctx.fillStyle = `rgb(${v},${v},${v})`;
+    ctx.fillRect(i * BAND, 0, BAND, H);
+  });
+  const target = new mb.BufferTarget();
+  const output = new mb.Output({ format: new mb.Mp4OutputFormat(), target });
+  const source = new mb.CanvasSource(canvas, { codec, bitrate: 8e6 });
+  output.addVideoTrack(source, { frameRate: 30 });
+  await output.start();
+  await source.add(0, 1 / 30);
+  await source.add(1 / 30, 1 / 30);
+  source.close();
+  await output.finalize();
+
+  const input = new mb.Input({ source: new mb.BlobSource(new Blob([target.buffer])), formats: mb.ALL_FORMATS });
+  const track = await input.getPrimaryVideoTrack();
+  const sample = await new mb.VideoSampleSink(track).getSample(0);
+  const back = new OffscreenCanvas(W, H);
+  const bctx = back.getContext('2d', { willReadFrequently: true });
+  drawUpright(bctx, sample, W, H, track.rotation ?? 0);
+  sample.close();
+  const out = LEVELS.map((_, i) => {
+    const d = bctx.getImageData(i * BAND + BAND / 2, H / 2, 1, 1).data;
+    return (d[0] + d[1] + d[2]) / 3;
+  });
+  return { levels: LEVELS, out, colorSpace: await track.getColorSpace() };
+}
+
+// Encode value to write so that the round trip yields the wanted value; null when the drift is negligible.
+export function gradeLut(levels, out) {
+  if (levels.every((v, i) => Math.abs(out[i] - v) <= 3)) return null;
+  for (let i = 1; i < out.length; i++) if (out[i] <= out[i - 1]) return null;
+  const lut = new Uint8Array(256);
+  let k = 0;
+  for (let want = 0; want < 256; want++) {
+    while (k < out.length - 2 && out[k + 1] < want) k++;
+    const t = Math.min(1, Math.max(0, (want - out[k]) / (out[k + 1] - out[k])));
+    lut[want] = Math.round(levels[k] + t * (levels[k + 1] - levels[k]));
+  }
+  return lut;
+}
+
+const GRADE_FRAG = `#version 300 es
+precision highp float;
+uniform sampler2D img;
+uniform sampler2D lut;
+in vec2 vUv;
+out vec4 outColor;
+float map(float v) { return texelFetch(lut, ivec2(int(round(clamp(v, 0.0, 1.0) * 255.0)), 0), 0).r; }
+void main() {
+  vec3 c = texture(img, vUv).rgb;
+  outColor = vec4(map(c.r), map(c.g), map(c.b), 1.0);
+}`;
+
+export class Grade {
+  constructor(width, height, lut) {
+    this.canvas = document.createElement('canvas');
+    this.canvas.width = width;
+    this.canvas.height = height;
+    const gl = this.canvas.getContext('webgl2', { premultipliedAlpha: false, preserveDrawingBuffer: true });
+    if (!gl) throw new Error('WebGL2 not available');
+    this.gl = gl;
+    const program = link(gl, VERT, GRADE_FRAG);
+    gl.useProgram(program);
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(program, 'pos');
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    const tex = (unit, filter) => {
+      const t = gl.createTexture();
+      gl.activeTexture(gl.TEXTURE0 + unit);
+      gl.bindTexture(gl.TEXTURE_2D, t);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      return t;
+    };
+    this.img = tex(0, gl.NEAREST);
+    gl.uniform1i(gl.getUniformLocation(program, 'img'), 0);
+    tex(1, gl.NEAREST);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, 256, 1, 0, gl.RED, gl.UNSIGNED_BYTE, lut);
+    gl.uniform1i(gl.getUniformLocation(program, 'lut'), 1);
+  }
+
+  apply(source) {
+    const { gl } = this;
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.img);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+    gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    return this.canvas;
+  }
+}

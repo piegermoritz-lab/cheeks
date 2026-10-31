@@ -1,4 +1,4 @@
-import { ToneMapper, drawUpright, measureResponse } from './hdr.js?v=33';
+import { ToneMapper, drawUpright, measureResponse, measureRoundTrip, gradeLut } from './hdr.js?v=34';
 
 // Collects what this browser does with the loaded video's frames, to tune HDR handling on devices we can't test.
 export async function diagnose(file) {
@@ -62,6 +62,14 @@ export async function diagnose(file) {
   }
   sample.close();
 
+  for (const codec of ['avc']) {
+    try {
+      const rt = await measureRoundTrip(mb, codec);
+      log(`roundtrip ${codec}`, `${rt.out.map(v => Math.round(v)).join(' ')} ${JSON.stringify(rt.colorSpace)} grade=${!!gradeLut(rt.levels, rt.out)}`);
+    } catch (err) {
+      log(`roundtrip ${codec}`, `failed: ${err.message}`);
+    }
+  }
   for (const t of ['hlg', 'pq', 'bt709']) {
     try {
       const r = measureResponse(t);

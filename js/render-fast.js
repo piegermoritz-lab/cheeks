@@ -1,6 +1,6 @@
-import { drawCaption } from './captions.js?v=33';
-import { FPS, videoBitrate } from './render.js?v=33';
-import { ToneMapper, drawUpright } from './hdr.js?v=33';
+import { drawCaption } from './captions.js?v=34';
+import { FPS, videoBitrate } from './render.js?v=34';
+import { ToneMapper, drawUpright, isHdr, measureRoundTrip, gradeLut, Grade } from './hdr.js?v=34';
 
 const even = n => Math.max(2, Math.round(n / 2) * 2);
 
@@ -15,7 +15,6 @@ export async function renderFast({ file, chunks, style, onProgress }) {
   if (!track || !(await track.canDecode())) return null;
     const W = even(track.displayWidth);
   const H = even(track.displayHeight);
-  const hdr = await track.hasHighDynamicRange();
   const rotation = track.rotation ?? 0;
 
   for (const codec of ['avc', 'vp9']) {
@@ -26,8 +25,17 @@ export async function renderFast({ file, chunks, style, onProgress }) {
     const output = new mb.Output({ format: new mb.Mp4OutputFormat({ fastStart: 'in-memory' }), target });
     const canvas = new OffscreenCanvas(W, H);
     const ctx = canvas.getContext('2d');
-    // HDR (e.g. iPhone HLG) is converted to SDR ourselves; letting the browser do it looks washed out.
-    const mapper = hdr ? new ToneMapper(W, H) : null;
+    // HDR frames (e.g. iPhone HLG, where the browser hands them out undecoded) are tone mapped ourselves. Safari
+    // already decodes HDR to SDR, so this is decided per frame, not per track.
+    let mapper = null;
+    let grade = null;
+    try {
+      const rt = await measureRoundTrip(mb, codec);
+      const lut = gradeLut(rt.levels, rt.out);
+      if (lut) grade = new Grade(W, H, lut);
+    } catch (err) {
+      console.warn('Round-trip calibration failed', err);
+    }
 
     const conversion = await mb.Conversion.init({
       input,
@@ -45,14 +53,15 @@ export async function renderFast({ file, chunks, style, onProgress }) {
         processedWidth: W,
         processedHeight: H,
         process: async sample => {
-          if (mapper) {
+          if (isHdr(sample.colorSpace)) {
+            mapper ??= new ToneMapper(W, H);
             await mapper.drawSample(sample, rotation);
             ctx.drawImage(mapper.canvas, 0, 0, W, H);
           } else {
             drawUpright(ctx, sample, W, H, rotation);
           }
           drawCaption(ctx, W, H, chunks, sample.timestamp, style);
-          return canvas;
+          return grade ? grade.apply(canvas) : canvas;
         },
       },
     });
