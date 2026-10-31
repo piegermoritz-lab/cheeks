@@ -1,12 +1,12 @@
-import { extractAudio } from './audio.js?v=36';
-import { transcribe } from './transcribe.js?v=36';
-import { DEFAULT_DICTIONARY } from './dictionary.js?v=36';
+import { extractAudio } from './audio.js?v=37';
+import { transcribe } from './transcribe.js?v=37';
+import { DEFAULT_DICTIONARY } from './dictionary.js?v=37';
 import {
   defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption, splitChunk, mergeWithNext, moveEdge,
-} from './captions.js?v=36';
-import { renderVideo } from './render.js?v=36';
-import { renderFast } from './render-fast.js?v=36';
-import { ToneMapper, drawUpright, isHdr, decoderLut } from './hdr.js?v=36';
+} from './captions.js?v=37';
+import { renderVideo } from './render.js?v=37';
+import { renderFast } from './render-fast.js?v=37';
+import { ToneMapper, drawUpright, isHdr, decoderLut, playbackTone } from './hdr.js?v=37';
 
 const $ = id => document.getElementById(id);
 
@@ -150,6 +150,7 @@ async function probeMedia(file, url) {
     };
     if (await vt.canDecode()) media.sink = new mb.VideoSampleSink(vt);
     if (media.colorSpace?.transfer === 'hlg') media.sdrLut = await decoderLut(mb);
+    if (media.sdrLut) media.tone = await playbackTone();
     if (state.url !== url) return;
     state.media = media;
     layoutStage();
@@ -192,7 +193,7 @@ async function requestFrame(t) {
         if (hdrFrame || state.media.sdrLut) {
           if (frameMapper?.canvas.width !== W || frameMapper?.canvas.height !== H) frameMapper = new ToneMapper(W, H);
           if (hdrFrame) await frameMapper.drawSample(sample, state.media.rotation);
-          else frameMapper.drawDecodedSdr(sample, state.media.rotation, state.media.sdrLut);
+          else frameMapper.drawDecodedSdr(sample, state.media.rotation, state.media.sdrLut, state.media.tone);
           image = frameMapper.canvas;
         } else {
           stillCanvas ??= document.createElement('canvas');
@@ -808,7 +809,7 @@ $('btn-diag').addEventListener('click', async () => {
   out.hidden = false;
   out.textContent = 'Läuft…';
   try {
-    const { diagnose } = await import('./diag.js?v=36');
+    const { diagnose } = await import('./diag.js?v=37');
     out.textContent = `export: ${state.exportPath ?? '–'}\n${await diagnose(state.file, preview)}`;
   } catch (err) {
     out.textContent = `Diagnose fehlgeschlagen: ${err.message}`;

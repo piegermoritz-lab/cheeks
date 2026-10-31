@@ -1,6 +1,6 @@
-import { drawCaption } from './captions.js?v=36';
-import { FPS, videoBitrate } from './render.js?v=36';
-import { ToneMapper, drawUpright, isHdr, measureRoundTrip, gradeLut, Grade, decoderLut } from './hdr.js?v=36';
+import { drawCaption } from './captions.js?v=37';
+import { FPS, videoBitrate } from './render.js?v=37';
+import { ToneMapper, drawUpright, isHdr, measureRoundTrip, gradeLut, Grade, decoderLut, playbackTone } from './hdr.js?v=37';
 
 const even = n => Math.max(2, Math.round(n / 2) * 2);
 
@@ -31,6 +31,7 @@ export async function renderFast({ file, chunks, style, onProgress }) {
     let grade = null;
     const hlgTrack = (await track.getColorSpace())?.transfer === 'hlg';
     const sdrLut = hlgTrack ? await decoderLut(mb) : null;
+    const tone = sdrLut ? await playbackTone() : null;
     try {
       const rt = await measureRoundTrip(mb, codec);
       const lut = gradeLut(rt.levels, rt.out);
@@ -61,7 +62,7 @@ export async function renderFast({ file, chunks, style, onProgress }) {
             ctx.drawImage(mapper.canvas, 0, 0, W, H);
           } else if (sdrLut) {
             mapper ??= new ToneMapper(W, H);
-            mapper.drawDecodedSdr(sample, rotation, sdrLut);
+            mapper.drawDecodedSdr(sample, rotation, sdrLut, tone);
             ctx.drawImage(mapper.canvas, 0, 0, W, H);
           } else {
             drawUpright(ctx, sample, W, H, rotation);

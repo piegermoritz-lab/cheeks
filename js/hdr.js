@@ -46,6 +46,9 @@ uniform int rotation;      // clockwise degrees / 90
 uniform bool flip;
 uniform ivec2 lumaSize;
 uniform float lut[256];
+uniform bool useToneTable;   // map luminance with a curve measured from the browser's own video playback
+uniform float toneL[16];
+uniform float toneT[16];
 
 in vec2 vUv;
 out vec4 outColor;
@@ -64,6 +67,13 @@ float hlgInverse(float e) {
 float pqToNits(float e) {
   float p = pow(max(e, 0.0), 1.0 / 78.84375);
   return 10000.0 * pow(max(p - 0.8359375, 0.0) / (18.8515625 - 18.6875 * p), 1.0 / 0.1593017578125);
+}
+
+float toneCurve(float l) {
+  for (int i = 0; i < 15; i++) {
+    if (l <= toneL[i + 1]) return mix(toneT[i], toneT[i + 1], (l - toneL[i]) / max(toneL[i + 1] - toneL[i], 1e-6));
+  }
+  return toneT[15];
 }
 
 float srgb(float l) {
@@ -116,7 +126,8 @@ void main() {
   if (transfer == 0) {
     vec3 e = vec3(hlgInverse(sig.r), hlgInverse(sig.g), hlgInverse(sig.b));
     float ys = dot(e, vec3(0.2627, 0.6780, 0.0593));
-    lin = e * pow(max(ys, 1e-6), 0.2) / 0.2029;
+    lin = e * pow(max(ys, 1e-6), 0.2);
+    if (!useToneTable) lin /= 0.2029;
   } else {
     lin = vec3(pqToNits(sig.r), pqToNits(sig.g), pqToNits(sig.b)) / 203.0;
   }
@@ -125,10 +136,15 @@ void main() {
   }
   lin = max(lin, 0.0);
 
-  // Soft roll-off of everything brighter than reference white.
   float l = dot(lin, vec3(0.2126, 0.7152, 0.0722));
-  const float knee = 0.9;
-  if (l > knee) lin *= (knee + (1.0 - knee) * (1.0 - exp(-(l - knee) / (1.0 - knee)))) / l;
+  if (useToneTable) {
+    // Hue-preserving: scale RGB so luminance follows the measured playback curve.
+    if (l > 1e-6) lin *= toneCurve(l) / l;
+  } else {
+    // Soft roll-off of everything brighter than reference white.
+    const float knee = 0.9;
+    if (l > knee) lin *= (knee + (1.0 - knee) * (1.0 - exp(-(l - knee) / (1.0 - knee)))) / l;
+  }
   lin = clamp(lin, 0.0, 1.0);
   outColor = vec4(srgb(lin.r), srgb(lin.g), srgb(lin.b), 1.0);
 }`;
@@ -168,15 +184,25 @@ export class ToneMapper {
     this.scratch = null;
   }
 
-  // A frame the decoder already turned into SDR, undone with the decoder calibration and converted properly.
-  drawDecodedSdr(sample, rotation, lut) {
+  // Safari hands out HLG frames as SDR-labelled 8-bit whose values are still the HLG signal in BT.2020 colours.
+  // The decoder LUT recovers the signal; colours are converted to BT.709 and luminance follows `tone` (measured from
+  // Safari's own playback) so stills and exports look like the video plays.
+  drawDecodedSdr(sample, rotation, lut, tone = null) {
     if (!this.scratch) {
       this.scratch = document.createElement('canvas');
       this.scratch.width = this.canvas.width;
       this.scratch.height = this.canvas.height;
     }
     drawUpright(this.scratch.getContext('2d'), sample, this.canvas.width, this.canvas.height, rotation);
-    this.drawRendered(this.scratch, { transfer: 'hlg' }, lut);
+    this.drawRendered(this.scratch, { transfer: 'hlg' }, lut, { gamut: true, tone });
+  }
+
+  setTone(tone) {
+    const { gl } = this;
+    this.set('useToneTable', tone ? 1 : 0);
+    if (!tone) return;
+    gl.uniform1fv(gl.getUniformLocation(this.program, 'toneL'), tone.L);
+    gl.uniform1fv(gl.getUniformLocation(this.program, 'toneT'), tone.T);
   }
 
   set(name, value, kind = '1i') {
@@ -243,6 +269,7 @@ export class ToneMapper {
     this.set('matrix', cs?.matrix === 'bt709' ? 1 : 0);
     this.set('transfer', cs?.transfer === 'pq' ? 1 : 0);
     this.set('convertGamut', cs?.primaries === 'bt709' ? 0 : 1);
+    this.setTone(null);
     this.set('rotation', (((rotation % 360) + 360) % 360) / 90);
     this.set('flip', 0);
     gl.uniform2i(gl.getUniformLocation(this.program, 'lumaSize'), w, h);
@@ -250,7 +277,7 @@ export class ToneMapper {
   }
 
   // Converts an image the browser already rendered (canvas, <video>) whose gray axis is described by a measured LUT.
-  drawRendered(source, cs, measuredLut = null) {
+  drawRendered(source, cs, measuredLut = null, { gamut = false, tone = null } = {}) {
     const { gl } = this;
     gl.activeTexture(gl.TEXTURE3);
     gl.bindTexture(gl.TEXTURE_2D, this.textures[3]);
@@ -260,8 +287,9 @@ export class ToneMapper {
     // Without a trustworthy measurement a second conversion would only make things worse.
     this.set('mode', lut ? 2 : 3);
     this.set('transfer', cs?.transfer === 'pq' ? 1 : 0);
-    // Browsers that render HDR at all also map it into the canvas gamut.
-    this.set('convertGamut', 0);
+    // Browsers that render HDR at all also map it into the canvas gamut, unless told otherwise.
+    this.set('convertGamut', gamut ? 1 : 0);
+    this.setTone(tone);
     if (lut) gl.uniform1fv(gl.getUniformLocation(this.program, 'lut'), lut);
     this.render();
   }
@@ -525,4 +553,78 @@ export async function inspectDecoder(mb, url, force = false) {
     r.error = err.message;
   }
   return r;
+}
+
+/* Playback calibration: the same HLG ramp played by a hidden <video> shows how the browser itself renders HLG for
+   display (the look that reads as "normal" on iPhone). Its gray response becomes the luminance curve above. */
+
+const hlgInverse = e => (e <= 0.5 ? (e * e) / 3 : (Math.exp((e - 0.55991073) / 0.17883277) + 0.28466892) / 12);
+const srgbToLinear = v => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+let tonePromise = null;
+
+export function playbackTone(urls = ['assets/hlg-ramp-hvc1.mp4', 'assets/hlg-ramp-hev1.mp4']) {
+  tonePromise ??= (async () => {
+    for (const url of urls) {
+      const out = await measurePlayback(url).catch(() => null);
+      if (out) return toneFromResponse(out);
+    }
+    return null;
+  })();
+  return tonePromise;
+}
+
+export function toneFromResponse(out) {
+  const L = new Float32Array(16);
+  const T = new Float32Array(16);
+  for (let i = 0; i < 16; i++) {
+    L[i] = hlgInverse(i / 15) ** 1.2;
+    T[i] = srgbToLinear(out[i] / 255);
+  }
+  return { L, T, response: out };
+}
+
+export async function measurePlayback(url, timeout = 6000) {
+  const v = document.createElement('video');
+  v.muted = true;
+  v.playsInline = true;
+  v.preload = 'auto';
+  v.setAttribute('muted', '');
+  v.setAttribute('playsinline', '');
+  Object.assign(v.style, { position: 'fixed', left: '0', top: '0', width: '2px', height: '2px', opacity: '0', pointerEvents: 'none' });
+  document.body.append(v);
+  const wait = (ev, ms = timeout) => new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`timeout ${ev}`)), ms);
+    v.addEventListener(ev, () => { clearTimeout(t); resolve(); }, { once: true });
+    v.addEventListener('error', () => { clearTimeout(t); reject(new Error('video error')); }, { once: true });
+  });
+  try {
+    const loaded = wait('loadeddata');
+    v.src = url;
+    v.load();
+    await v.play().catch(() => {});
+    await loaded;
+    v.pause();
+    const seeked = wait('seeked');
+    v.currentTime = 0.5;
+    await seeked;
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const W = v.videoWidth;
+    const H = v.videoHeight;
+    const c = document.createElement('canvas');
+    c.width = W;
+    c.height = H;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(v, 0, 0, W, H);
+    const out = Array.from({ length: 16 }, (_, i) => {
+      const d = ctx.getImageData(Math.floor(((i + 0.5) * W) / 16), Math.floor(H / 2), 1, 1).data;
+      return (d[0] + d[1] + d[2]) / 3;
+    });
+    for (let i = 1; i < 16; i++) if (out[i] < out[i - 1] - 1) return null;
+    if (out[15] - out[0] < 64) return null;
+    return out;
+  } finally {
+    v.removeAttribute('src');
+    v.load();
+    v.remove();
+  }
 }

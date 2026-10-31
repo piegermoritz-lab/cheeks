@@ -1,4 +1,4 @@
-import { ToneMapper, drawUpright, measureResponse, measureRoundTrip, gradeLut, inspectDecoder, decoderLut } from './hdr.js?v=36';
+import { ToneMapper, drawUpright, measureResponse, measureRoundTrip, gradeLut, inspectDecoder, decoderLut, playbackTone } from './hdr.js?v=37';
 
 // Collects what this browser does with the loaded video's frames, to tune HDR handling on devices we can't test.
 export async function diagnose(file, video) {
@@ -68,10 +68,12 @@ export async function diagnose(file, video) {
     log(`clip ${u.split('-').pop()}`, { ...info, lut: !!lut });
   }
   const lut = await decoderLut(mb);
+  const tone = await playbackTone();
+  log('playback ramp', tone ? tone.response.map(Math.round).join(' ') : 'not measurable');
   if (lut) {
     const s2 = await new mb.VideoSampleSink(vt).getSample(first + Math.min(1, dur / 2));
     const m = new ToneMapper(W, H);
-    m.drawDecodedSdr(s2, vt.rotation, lut);
+    m.drawDecodedSdr(s2, vt.rotation, lut, tone);
     s2.close();
     log('mapper(decoded sdr)', read(m.canvas));
   } else {
