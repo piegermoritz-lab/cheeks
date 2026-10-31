@@ -1,5 +1,5 @@
-import { drawCaption } from './captions.js?v=29';
-import { FPS, videoBitrate } from './render.js?v=29';
+import { drawCaption } from './captions.js?v=30';
+import { FPS, videoBitrate } from './render.js?v=30';
 
 const even = n => Math.max(2, Math.round(n / 2) * 2);
 

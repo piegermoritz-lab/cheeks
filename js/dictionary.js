@@ -34,6 +34,14 @@ Janis Reichmuth = Jannis Reichmuth
 Jannis Reichmut = Jannis Reichmuth
 Janis Reichmut = Jannis Reichmuth
 Strava
+Coros
+Cohoos = Coros
+Kohoos = Coros
+Coroos = Coros
+Koros = Coros
+Corros = Coros
+Korros = Coros
+Corus = Coros
 Instagram
 
 # Triathlon

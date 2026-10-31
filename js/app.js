@@ -1,11 +1,11 @@
-import { extractAudio } from './audio.js?v=29';
-import { transcribe } from './transcribe.js?v=29';
-import { DEFAULT_DICTIONARY } from './dictionary.js?v=29';
+import { extractAudio } from './audio.js?v=30';
+import { transcribe } from './transcribe.js?v=30';
+import { DEFAULT_DICTIONARY } from './dictionary.js?v=30';
 import {
   defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption, splitChunk, mergeWithNext, moveEdge,
-} from './captions.js?v=29';
-import { renderVideo } from './render.js?v=29';
-import { renderFast } from './render-fast.js?v=29';
+} from './captions.js?v=30';
+import { renderVideo } from './render.js?v=30';
+import { renderFast } from './render-fast.js?v=30';
 
 const $ = id => document.getElementById(id);
 
