@@ -1,12 +1,12 @@
-import { extractAudio } from './audio.js?v=34';
-import { transcribe } from './transcribe.js?v=34';
-import { DEFAULT_DICTIONARY } from './dictionary.js?v=34';
+import { extractAudio } from './audio.js?v=35';
+import { transcribe } from './transcribe.js?v=35';
+import { DEFAULT_DICTIONARY } from './dictionary.js?v=35';
 import {
   defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption, splitChunk, mergeWithNext, moveEdge,
-} from './captions.js?v=34';
-import { renderVideo } from './render.js?v=34';
-import { renderFast } from './render-fast.js?v=34';
-import { ToneMapper, drawUpright, isHdr } from './hdr.js?v=34';
+} from './captions.js?v=35';
+import { renderVideo } from './render.js?v=35';
+import { renderFast } from './render-fast.js?v=35';
+import { ToneMapper, drawUpright, isHdr, decoderLut } from './hdr.js?v=35';
 
 const $ = id => document.getElementById(id);
 
@@ -149,6 +149,7 @@ async function probeMedia(file, url) {
       sink: null,
     };
     if (await vt.canDecode()) media.sink = new mb.VideoSampleSink(vt);
+    if (media.colorSpace?.transfer === 'hlg') media.sdrLut = await decoderLut(mb);
     if (state.url !== url) return;
     state.media = media;
     layoutStage();
@@ -187,9 +188,11 @@ async function requestFrame(t) {
       if (sample) {
         const W = frameCanvas.width;
         const H = frameCanvas.height;
-        if (isHdr(sample.colorSpace)) {
+        const hdrFrame = isHdr(sample.colorSpace);
+        if (hdrFrame || state.media.sdrLut) {
           if (frameMapper?.canvas.width !== W || frameMapper?.canvas.height !== H) frameMapper = new ToneMapper(W, H);
-          await frameMapper.drawSample(sample, state.media.rotation);
+          if (hdrFrame) await frameMapper.drawSample(sample, state.media.rotation);
+          else frameMapper.drawDecodedSdr(sample, state.media.rotation, state.media.sdrLut);
           image = frameMapper.canvas;
         } else {
           stillCanvas ??= document.createElement('canvas');
@@ -805,7 +808,7 @@ $('btn-diag').addEventListener('click', async () => {
   out.hidden = false;
   out.textContent = 'Läuft…';
   try {
-    const { diagnose } = await import('./diag.js?v=34');
+    const { diagnose } = await import('./diag.js?v=35');
     out.textContent = `export: ${state.exportPath ?? '–'}\n${await diagnose(state.file)}`;
   } catch (err) {
     out.textContent = `Diagnose fehlgeschlagen: ${err.message}`;

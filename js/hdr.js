@@ -168,6 +168,17 @@ export class ToneMapper {
     this.scratch = null;
   }
 
+  // A frame the decoder already turned into SDR, undone with the decoder calibration and converted properly.
+  drawDecodedSdr(sample, rotation, lut) {
+    if (!this.scratch) {
+      this.scratch = document.createElement('canvas');
+      this.scratch.width = this.canvas.width;
+      this.scratch.height = this.canvas.height;
+    }
+    drawUpright(this.scratch.getContext('2d'), sample, this.canvas.width, this.canvas.height, rotation);
+    this.drawRendered(this.scratch, { transfer: 'hlg' }, lut);
+  }
+
   set(name, value, kind = '1i') {
     this.gl[`uniform${kind}`](this.gl.getUniformLocation(this.program, name), value);
   }
@@ -239,13 +250,13 @@ export class ToneMapper {
   }
 
   // Converts an image the browser already rendered (canvas, <video>) whose gray axis is described by a measured LUT.
-  drawRendered(source, cs) {
+  drawRendered(source, cs, measuredLut = null) {
     const { gl } = this;
     gl.activeTexture(gl.TEXTURE3);
     gl.bindTexture(gl.TEXTURE_2D, this.textures[3]);
     gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
-    const lut = this.lutFor(cs?.transfer);
+    const lut = measuredLut ?? this.lutFor(cs?.transfer);
     // Without a trustworthy measurement a second conversion would only make things worse.
     this.set('mode', lut ? 2 : 3);
     this.set('transfer', cs?.transfer === 'pq' ? 1 : 0);
@@ -444,4 +455,57 @@ export class Grade {
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     return this.canvas;
   }
+}
+
+/* Decoder calibration: Safari decodes HLG video straight to 8-bit SDR with its own, washed-out mapping. A bundled
+   HLG clip with 16 known gray levels (same codec and tagging as iPhone footage) is decoded the same way; the inverse
+   of what comes out restores the HLG signal, which ToneMapper then converts properly. */
+
+const decoderCache = new Map();
+
+export function decoderLut(mb, url = 'assets/hlg-ramp.mp4', force = false) {
+  const key = `${url}|${force}`;
+  if (!decoderCache.has(key)) decoderCache.set(key, measureDecoder(mb, url, force).catch(err => {
+    console.warn('Decoder calibration failed', err);
+    return null;
+  }));
+  return decoderCache.get(key);
+}
+
+export async function measureDecoder(mb, url, force = false) {
+  const blob = await (await fetch(url)).blob();
+  const input = new mb.Input({ source: new mb.BlobSource(blob), formats: mb.ALL_FORMATS });
+  const track = await input.getPrimaryVideoTrack();
+  if (!track || !(await track.canDecode())) return null;
+  const sample = await new mb.VideoSampleSink(track).getSample(0);
+  if (!sample) return null;
+  // Raw HDR frames are converted exactly anyway; no calibration needed.
+  if (isHdr(sample.colorSpace) && !force) {
+    sample.close();
+    return null;
+  }
+  const W = track.displayWidth;
+  const H = track.displayHeight;
+  const c = new OffscreenCanvas(W, H);
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  drawUpright(ctx, sample, W, H, track.rotation ?? 0);
+  sample.close();
+  const bands = 16;
+  const out = Array.from({ length: bands }, (_, i) => {
+    const d = ctx.getImageData(Math.floor(((i + 0.5) * W) / bands), Math.floor(H / 2), 1, 1).data;
+    return (d[0] + d[1] + d[2]) / 3;
+  });
+  for (let i = 1; i < bands; i++) if (out[i] < out[i - 1]) return null;
+  if (out[bands - 1] - out[0] < 64) return null;
+  const lut = new Float32Array(256);
+  let k = 0;
+  for (let o = 0; o < 256; o++) {
+    while (k < bands - 2 && out[k + 1] < o) k++;
+    const a = out[k];
+    const b = out[k + 1];
+    const t = b > a ? Math.min(1, Math.max(0, (o - a) / (b - a))) : 0;
+    lut[o] = (k + t) / (bands - 1);
+  }
+  lut.response = out;
+  return lut;
 }

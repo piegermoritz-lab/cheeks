@@ -1,6 +1,6 @@
-import { drawCaption } from './captions.js?v=34';
-import { FPS, videoBitrate } from './render.js?v=34';
-import { ToneMapper, drawUpright, isHdr, measureRoundTrip, gradeLut, Grade } from './hdr.js?v=34';
+import { drawCaption } from './captions.js?v=35';
+import { FPS, videoBitrate } from './render.js?v=35';
+import { ToneMapper, drawUpright, isHdr, measureRoundTrip, gradeLut, Grade, decoderLut } from './hdr.js?v=35';
 
 const even = n => Math.max(2, Math.round(n / 2) * 2);
 
@@ -29,6 +29,8 @@ export async function renderFast({ file, chunks, style, onProgress }) {
     // already decodes HDR to SDR, so this is decided per frame, not per track.
     let mapper = null;
     let grade = null;
+    const hlgTrack = (await track.getColorSpace())?.transfer === 'hlg';
+    const sdrLut = hlgTrack ? await decoderLut(mb) : null;
     try {
       const rt = await measureRoundTrip(mb, codec);
       const lut = gradeLut(rt.levels, rt.out);
@@ -56,6 +58,10 @@ export async function renderFast({ file, chunks, style, onProgress }) {
           if (isHdr(sample.colorSpace)) {
             mapper ??= new ToneMapper(W, H);
             await mapper.drawSample(sample, rotation);
+            ctx.drawImage(mapper.canvas, 0, 0, W, H);
+          } else if (sdrLut) {
+            mapper ??= new ToneMapper(W, H);
+            mapper.drawDecodedSdr(sample, rotation, sdrLut);
             ctx.drawImage(mapper.canvas, 0, 0, W, H);
           } else {
             drawUpright(ctx, sample, W, H, rotation);

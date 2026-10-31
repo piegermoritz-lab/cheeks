@@ -1,4 +1,4 @@
-import { ToneMapper, drawUpright, measureResponse, measureRoundTrip, gradeLut } from './hdr.js?v=34';
+import { ToneMapper, drawUpright, measureResponse, measureRoundTrip, gradeLut, measureDecoder } from './hdr.js?v=35';
 
 // Collects what this browser does with the loaded video's frames, to tune HDR handling on devices we can't test.
 export async function diagnose(file) {
@@ -62,6 +62,17 @@ export async function diagnose(file) {
   }
   sample.close();
 
+  try {
+    const lut = await measureDecoder(mb, 'assets/hlg-ramp.mp4');
+    log('decoder hlg', lut ? lut.response.map(Math.round).join(' ') : 'raw HDR or not decodable');
+    if (lut) {
+      const m = new ToneMapper(W, H);
+      m.drawDecodedSdr(await new mb.VideoSampleSink(vt).getSample(first + Math.min(1, dur / 2)), vt.rotation, lut);
+      log('mapper(decoded sdr)', read(m.canvas));
+    }
+  } catch (err) {
+    log('decoder hlg', `failed: ${err.message}`);
+  }
   for (const codec of ['avc']) {
     try {
       const rt = await measureRoundTrip(mb, codec);
