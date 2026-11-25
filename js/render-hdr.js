@@ -1,14 +1,13 @@
-import { drawCaption, chunkAt } from './captions.js?v=40';
-import { FPS, videoBitrate } from './render.js?v=40';
+import { drawCaption, chunkAt } from './captions.js?v=41';
+import { FPS, videoBitrate } from './render.js?v=41';
 
 // HDR clips (iPhone HLG): no colour conversion at all. Decoded frames keep their HLG signal (Safari hands it out
 // untouched as 8-bit YUV), captions are blended straight into the Y/U/V planes, and the result is encoded and tagged
 // as BT.2020 HLG again, so it plays exactly like the original. Audio is copied.
 
 const HDR_COLOR = { primaries: 'bt2020', transfer: 'hlg', matrix: 'bt2020-ncl', fullRange: false };
-// Caption white as HLG signal level: a bit above reference white (75 %) so text stays clearly white next to bright
-// HDR highlights without glaring.
-const WHITE = 0.85;
+// Caption white as HLG signal level: full white, so captions look pure white like in SDR videos.
+const WHITE = 1;
 const even = n => Math.max(2, Math.round(n / 2) * 2);
 
 export async function renderHdr({ file, chunks, style, onProgress }) {
