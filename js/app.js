@@ -1,13 +1,14 @@
-import { extractAudio } from './audio.js?v=38';
-import { transcribe } from './transcribe.js?v=38';
-import { DEFAULT_DICTIONARY } from './dictionary.js?v=38';
+import { extractAudio } from './audio.js?v=39';
+import { transcribe } from './transcribe.js?v=39';
+import { DEFAULT_DICTIONARY } from './dictionary.js?v=39';
 import {
   defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption, splitChunk, mergeWithNext, moveEdge,
-} from './captions.js?v=38';
-import { renderVideo } from './render.js?v=38';
-import { renderFast } from './render-fast.js?v=38';
-import { drawUpright } from './render-fast.js?v=38';
-import { renderCapture } from './render-capture.js?v=38';
+} from './captions.js?v=39';
+import { renderVideo } from './render.js?v=39';
+import { renderFast } from './render-fast.js?v=39';
+import { drawUpright } from './render-fast.js?v=39';
+import { renderCapture } from './render-capture.js?v=39';
+import { renderHdr } from './render-hdr.js?v=39';
 
 const $ = id => document.getElementById(id);
 
@@ -756,10 +757,12 @@ async function runExport() {
     const job = { file: state.file, url: state.url, chunks: state.chunks, style: state.style, audioCtx, onProgress };
     let blob = null;
     state.exportError = null;
-    // SDR: decode/encode straight from the file. HDR (or if that isn't possible): take the frames from video
-    // playback, which is the only place browsers render HDR colours correctly.
-    for (const [name, render] of [['fast', renderFast], ['capture', renderCapture], ['realtime', renderVideo]]) {
+    // SDR clips: decode/encode from the file. HDR clips: pass the HDR signal through untouched and keep it tagged as
+    // HDR. Each returns null when it doesn't apply; the playback-based paths are last-resort fallbacks.
+    const paths = [['fast', renderFast], ['hdr', renderHdr], ['capture', renderCapture], ['realtime', renderVideo]];
+    for (const [name, render] of paths) {
       if (name === 'fast' && state.media?.hdr) continue;
+      if (name === 'hdr' && state.media && !state.media.hdr) continue;
       try {
         onProgress(0);
         if (name === 'capture') setBusy('Video wird gerendert…', 0, 'Dauert so lange wie das Video. Bildschirm anlassen und App offen lassen.');
@@ -821,7 +824,7 @@ $('btn-diag').addEventListener('click', async () => {
   out.hidden = false;
   out.textContent = 'Läuft…';
   try {
-    const { diagnose } = await import('./diag.js?v=38');
+    const { diagnose } = await import('./diag.js?v=39');
     out.textContent = `export: ${state.exportPath ?? '–'}${state.exportError ? ` (${state.exportError})` : ''}\n${await diagnose(state.file, preview)}`;
   } catch (err) {
     out.textContent = `Diagnose fehlgeschlagen: ${err.message}`;

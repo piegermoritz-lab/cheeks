@@ -1,4 +1,4 @@
-import { parseDictionary, buildPrompt, applyFixes } from './dictionary.js?v=38';
+import { parseDictionary, buildPrompt, applyFixes } from './dictionary.js?v=39';
 
 const ENDPOINT = 'https://api.groq.com/openai/v1/audio/transcriptions';
 const PROMPT = 'Transkription auf Hochdeutsch. Gesprochen wird Schweizerdeutsch.';
