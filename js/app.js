@@ -1,12 +1,13 @@
-import { extractAudio } from './audio.js?v=37';
-import { transcribe } from './transcribe.js?v=37';
-import { DEFAULT_DICTIONARY } from './dictionary.js?v=37';
+import { extractAudio } from './audio.js?v=38';
+import { transcribe } from './transcribe.js?v=38';
+import { DEFAULT_DICTIONARY } from './dictionary.js?v=38';
 import {
   defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption, splitChunk, mergeWithNext, moveEdge,
-} from './captions.js?v=37';
-import { renderVideo } from './render.js?v=37';
-import { renderFast } from './render-fast.js?v=37';
-import { ToneMapper, drawUpright, isHdr, decoderLut, playbackTone } from './hdr.js?v=37';
+} from './captions.js?v=38';
+import { renderVideo } from './render.js?v=38';
+import { renderFast } from './render-fast.js?v=38';
+import { drawUpright } from './render-fast.js?v=38';
+import { renderCapture } from './render-capture.js?v=38';
 
 const $ = id => document.getElementById(id);
 
@@ -130,8 +131,9 @@ function openEditor() {
   if (duration()) buildTimeline();
 }
 
-// iOS doesn't load a <video> before the first tap on play, so duration, size and still frames are read from the
-// file directly. The <video> element is then only needed for playback.
+// iOS doesn't load a <video> before the first tap on play, so duration and size are read from the file directly.
+// SDR stills are decoded from the file; HDR stills come from the <video> itself, the only place browsers render HDR
+// with correct colours, so the preview is started muted for an instant to make it show frames.
 async function probeMedia(file, url) {
   try {
     const mb = await import('./vendor/mediabunny-1.64.0.min.mjs');
@@ -145,16 +147,17 @@ async function probeMedia(file, url) {
       first: await vt.getFirstTimestamp(),
       hdr: await vt.hasHighDynamicRange(),
       rotation: vt.rotation ?? 0,
-      colorSpace: await vt.getColorSpace(),
       sink: null,
     };
-    if (await vt.canDecode()) media.sink = new mb.VideoSampleSink(vt);
-    if (media.colorSpace?.transfer === 'hlg') media.sdrLut = await decoderLut(mb);
-    if (media.sdrLut) media.tone = await playbackTone();
+    if (!media.hdr && (await vt.canDecode())) media.sink = new mb.VideoSampleSink(vt);
     if (state.url !== url) return;
     state.media = media;
     layoutStage();
     buildTimeline();
+    if (media.hdr) {
+      buildThumbs();
+      primePreview();
+    }
   } catch (err) {
     console.warn('Reading the video file failed', err);
   }
@@ -165,13 +168,23 @@ preview.addEventListener('loadedmetadata', () => {
   buildTimeline();
 });
 
-/* Still frames: while paused, the frame under the playhead is decoded from the file and drawn over the <video>. */
+async function primePreview() {
+  if (preview.played.length) return;
+  preview.muted = true;
+  try {
+    await preview.play();
+    preview.pause();
+  } catch {}
+  preview.muted = false;
+  preview.currentTime = playhead;
+}
+
+/* SDR still frames: while paused, the frame under the playhead is decoded from the file and drawn over the <video>. */
 
 const frameCanvas = $('frame');
 let frameWanted = null;
 let frameBusy = false;
 let frameShown = -1;
-let frameMapper = null;
 let stillCanvas = null;
 
 async function requestFrame(t) {
@@ -189,19 +202,11 @@ async function requestFrame(t) {
       if (sample) {
         const W = frameCanvas.width;
         const H = frameCanvas.height;
-        const hdrFrame = isHdr(sample.colorSpace);
-        if (hdrFrame || state.media.sdrLut) {
-          if (frameMapper?.canvas.width !== W || frameMapper?.canvas.height !== H) frameMapper = new ToneMapper(W, H);
-          if (hdrFrame) await frameMapper.drawSample(sample, state.media.rotation);
-          else frameMapper.drawDecodedSdr(sample, state.media.rotation, state.media.sdrLut, state.media.tone);
-          image = frameMapper.canvas;
-        } else {
-          stillCanvas ??= document.createElement('canvas');
-          stillCanvas.width = W;
-          stillCanvas.height = H;
-          drawUpright(stillCanvas.getContext('2d'), sample, W, H, state.media.rotation);
-          image = stillCanvas;
-        }
+        stillCanvas ??= document.createElement('canvas');
+        stillCanvas.width = W;
+        stillCanvas.height = H;
+        drawUpright(stillCanvas.getContext('2d'), sample, W, H, state.media.rotation);
+        image = stillCanvas;
         sample.close();
       }
       frameShown = want;
@@ -296,7 +301,8 @@ async function buildThumbs() {
     return true;
   };
 
-  for (const source of [framesFromFile, framesFromVideo]) {
+  // HDR thumbnails from the file come out washed out; the <video> renders them right.
+  for (const source of state.media?.hdr ? [framesFromVideo, framesFromFile] : [framesFromFile, framesFromVideo]) {
     try {
       drawn = 0;
       await source(times, Math.round(tileW * dpr), Math.round(tileH * dpr), paint);
@@ -664,7 +670,7 @@ function tick() {
     if (!preview.paused) {
       playhead = preview.currentTime;
       scrollToTime(playhead);
-    } else if (Math.abs(playhead - frameShown) > 0.001 && frameWanted !== playhead) {
+    } else if (state.media?.sink && Math.abs(playhead - frameShown) > 0.001 && frameWanted !== playhead) {
       requestFrame(playhead);
     }
     const ctx = overlay.getContext('2d');
@@ -747,20 +753,26 @@ async function runExport() {
   try {
     await document.fonts.load(`${state.style.weight} 40px ${state.style.font}`);
     const onProgress = p => { $('busy-bar').style.width = `${Math.round(p * 100)}%`; };
-    const job = {
-      file: state.file, url: state.url, chunks: state.chunks, style: state.style, audioCtx, onProgress,
-      colorSpace: state.media?.colorSpace,
-    };
+    const job = { file: state.file, url: state.url, chunks: state.chunks, style: state.style, audioCtx, onProgress };
     let blob = null;
-    try {
-      blob = await renderFast(job);
-    } catch (err) {
-      console.warn('Fast export failed, falling back to real-time export', err);
-    }
-    state.exportPath = blob ? 'fast' : 'realtime';
-    if (!blob) {
-      onProgress(0);
-      blob = await renderVideo(job);
+    state.exportError = null;
+    // SDR: decode/encode straight from the file. HDR (or if that isn't possible): take the frames from video
+    // playback, which is the only place browsers render HDR colours correctly.
+    for (const [name, render] of [['fast', renderFast], ['capture', renderCapture], ['realtime', renderVideo]]) {
+      if (name === 'fast' && state.media?.hdr) continue;
+      try {
+        onProgress(0);
+        if (name === 'capture') setBusy('Video wird gerendert…', 0, 'Dauert so lange wie das Video. Bildschirm anlassen und App offen lassen.');
+        blob = await render(job);
+      } catch (err) {
+        console.warn(`Export path ${name} failed`, err);
+        state.exportError = `${name}: ${err.message || err}`;
+        if (name === 'realtime') throw err;
+      }
+      if (blob) {
+        state.exportPath = name;
+        break;
+      }
     }
     const ext = blob.type.includes('webm') ? 'webm' : 'mp4';
     state.result = new File([blob], `tricaps-${Date.now()}.${ext}`, { type: blob.type });
@@ -809,8 +821,8 @@ $('btn-diag').addEventListener('click', async () => {
   out.hidden = false;
   out.textContent = 'Läuft…';
   try {
-    const { diagnose } = await import('./diag.js?v=37');
-    out.textContent = `export: ${state.exportPath ?? '–'}\n${await diagnose(state.file, preview)}`;
+    const { diagnose } = await import('./diag.js?v=38');
+    out.textContent = `export: ${state.exportPath ?? '–'}${state.exportError ? ` (${state.exportError})` : ''}\n${await diagnose(state.file, preview)}`;
   } catch (err) {
     out.textContent = `Diagnose fehlgeschlagen: ${err.message}`;
   }

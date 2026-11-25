@@ -1,5 +1,4 @@
-import { drawCaption } from './captions.js?v=37';
-import { ToneMapper, isHdr } from './hdr.js?v=37';
+import { drawCaption } from './captions.js?v=38';
 
 export const FPS = 30;
 
@@ -22,7 +21,7 @@ export function pickMime() {
 const once = (el, ev) => new Promise(r => el.addEventListener(ev, r, { once: true }));
 
 // Plays the video once in real time and records canvas frames + the original audio.
-export async function renderVideo({ url, chunks, style, audioCtx, onProgress, colorSpace }) {
+export async function renderVideo({ url, chunks, style, audioCtx, onProgress }) {
   const v = document.createElement('video');
   v.playsInline = true;
   v.preload = 'auto';
@@ -60,13 +59,8 @@ export async function renderVideo({ url, chunks, style, audioCtx, onProgress, co
     rec.ondataavailable = e => { if (e.data.size) parts.push(e.data); };
     const stopped = once(rec, 'stop');
 
-    const mapper = isHdr(colorSpace) ? new ToneMapper(W, H) : null;
     const draw = () => {
       ctx.drawImage(v, 0, 0, W, H);
-      if (mapper) {
-        mapper.drawRendered(canvas, colorSpace);
-        ctx.drawImage(mapper.canvas, 0, 0, W, H);
-      }
       drawCaption(ctx, W, H, chunks, v.currentTime, style);
       onProgress?.(v.duration ? v.currentTime / v.duration : 0);
     };
