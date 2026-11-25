@@ -1,5 +1,5 @@
-import { drawCaption } from './captions.js?v=39';
-import { FPS, videoBitrate } from './render.js?v=39';
+import { drawCaption } from './captions.js?v=40';
+import { FPS, videoBitrate } from './render.js?v=40';
 
 const even = n => Math.max(2, Math.round(n / 2) * 2);
 const MAX_IN_FLIGHT = 6;

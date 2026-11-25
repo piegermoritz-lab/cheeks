@@ -1,4 +1,4 @@
-import { drawCaption } from './captions.js?v=39';
+import { drawCaption } from './captions.js?v=40';
 
 export const FPS = 30;
 

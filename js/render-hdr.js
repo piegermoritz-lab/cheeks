@@ -1,5 +1,5 @@
-import { drawCaption, chunkAt } from './captions.js?v=39';
-import { FPS, videoBitrate } from './render.js?v=39';
+import { drawCaption, chunkAt } from './captions.js?v=40';
+import { FPS, videoBitrate } from './render.js?v=40';
 
 // HDR clips (iPhone HLG): no colour conversion at all. Decoded frames keep their HLG signal (Safari hands it out
 // untouched as 8-bit YUV), captions are blended straight into the Y/U/V planes, and the result is encoded and tagged
@@ -22,100 +22,114 @@ export async function renderHdr({ file, chunks, style, onProgress }) {
   const rotation = (((track.rotation ?? 0) % 360) + 360) % 360;
   const CW = even(track.codedWidth);
   const CH = even(track.codedHeight);
+  const bitrate = videoBitrate(CW, CH);
+  // H.264 plays everywhere (Photos included); the HLG tagging works the same as with HEVC.
+  if (!(await mb.canEncodeVideo('avc', { width: CW, height: CH, bitrate }))) throw new Error(`kein H.264-Encoder für ${CW}x${CH}`);
 
-  const encoderConfig = await pickEncoder(CW, CH);
-  if (!encoderConfig) return null;
-
+  const HlgEncoder = hlgEncoderClass(mb);
   const target = new mb.BufferTarget();
   const output = new mb.Output({ format: new mb.Mp4OutputFormat({ fastStart: 'in-memory' }), target });
-  const videoSource = new mb.EncodedVideoPacketSource(encoderConfig.mbCodec);
-  // Frames stay in stored orientation; the rotation is kept as metadata like in the original.
-  output.addVideoTrack(videoSource, { frameRate: FPS, rotation });
-  let audioSource = null;
-  if (audioTrack?.codec) {
-    audioSource = new mb.EncodedAudioPacketSource(audioTrack.codec);
-    output.addAudioTrack(audioSource);
-  }
-  await output.start();
-
-  let failure = null;
-  let packets = Promise.resolve();
-  const encoder = new VideoEncoder({
-    output: (chunk, meta) => {
-      // The file's colour box is built from this; browsers don't reliably report HLG back themselves.
-      const m = meta?.decoderConfig ? { ...meta, decoderConfig: { ...meta.decoderConfig, colorSpace: HDR_COLOR } } : meta;
-      const packet = mb.EncodedPacket.fromEncodedChunk(chunk);
-      packets = packets.then(() => videoSource.add(packet, m)).catch(err => { failure ??= err; });
-    },
-    error: err => { failure ??= err; },
-  });
-  encoder.configure(encoderConfig.config);
-
-  const captions = new CaptionMasks(chunks, style, CW, CH, rotation);
-  const yuv = new Uint8Array(CW * CH * 1.5);
-  let nextT = -Infinity;
-  let frames = 0;
-
-  for await (const sample of new mb.VideoSampleSink(track).samples()) {
-    try {
-      if (failure) throw failure;
-      const t = sample.timestamp;
-      if (t + 0.002 < nextT) continue;
-      nextT = Math.max(nextT + 1 / FPS, t + 0.5 / FPS);
-      await toLimitedI420(sample, yuv, CW, CH);
-      captions.burn(yuv, t);
-      const frame = new VideoFrame(yuv, {
-        format: 'I420',
-        codedWidth: CW,
-        codedHeight: CH,
-        timestamp: Math.round(t * 1e6),
-        duration: Math.round(1e6 / FPS),
-        colorSpace: HDR_COLOR,
-      });
-      encoder.encode(frame, { keyFrame: frames % (FPS * 2) === 0 });
-      frame.close();
-      frames++;
-      while (encoder.encodeQueueSize > 4 && !failure) await new Promise(r => setTimeout(r, 4));
-      onProgress?.(duration ? Math.min(0.97, t / duration) : 0);
-    } finally {
-      sample.close();
+  HlgEncoder.active = true;
+  try {
+    const videoSource = new mb.VideoSampleSource({ codec: 'avc', bitrate, keyFrameInterval: 2 });
+    // Frames stay in stored orientation; the rotation is kept as metadata like in the original.
+    output.addVideoTrack(videoSource, { frameRate: FPS, rotation });
+    let audioSource = null;
+    if (audioTrack?.codec) {
+      audioSource = new mb.EncodedAudioPacketSource(audioTrack.codec);
+      output.addAudioTrack(audioSource);
     }
+    await output.start();
+
+    const captions = new CaptionMasks(chunks, style, CW, CH, rotation);
+    // Safe to reuse: each frame is fully handed to the encoder before the next one is written.
+    const yuv = new Uint8Array(CW * CH * 1.5);
+    let nextT = -Infinity;
+    let frames = 0;
+    for await (const sample of new mb.VideoSampleSink(track).samples()) {
+      try {
+        const t = sample.timestamp;
+        if (t + 0.002 < nextT) continue;
+        nextT = Math.max(nextT + 1 / FPS, t + 0.5 / FPS);
+        await toLimitedI420(sample, yuv, CW, CH);
+        captions.burn(yuv, t);
+        const out = new mb.VideoSample(yuv, {
+          format: 'I420', codedWidth: CW, codedHeight: CH, timestamp: t, duration: 1 / FPS, colorSpace: HDR_COLOR,
+        });
+        await videoSource.add(out);
+        out.close();
+        frames++;
+        onProgress?.(duration ? Math.min(0.97, t / duration) : 0);
+      } finally {
+        sample.close();
+      }
+    }
+    if (!frames) throw new Error('Keine Bilder dekodiert');
+    videoSource.close();
+    if (audioSource) {
+      await copyAudio(mb, audioTrack, audioSource);
+      audioSource.close();
+    }
+    await output.finalize();
+  } finally {
+    HlgEncoder.active = false;
   }
-  await encoder.flush();
-  encoder.close();
-  await packets;
-  if (failure) throw failure;
-  if (!frames) throw new Error('Keine Bilder dekodiert');
-  videoSource.close();
-  if (audioSource) {
-    await copyAudio(mb, audioTrack, audioSource);
-    audioSource.close();
-  }
-  await output.finalize();
   onProgress?.(1);
   return new Blob([target.buffer], { type: 'video/mp4' });
 }
 
-async function pickEncoder(width, height) {
-  const bitrate = videoBitrate(width, height);
-  const candidates = [
-    // HEVC is what iPhones use for HDR; H.264 carries the same HLG tagging where HEVC encoding isn't available.
-    { mbCodec: 'hevc', codec: 'hvc1.1.6.L153.B0', extra: { hevc: { format: 'hevc' } } },
-    { mbCodec: 'hevc', codec: 'hvc1.1.6.L150.B0', extra: { hevc: { format: 'hevc' } } },
-    { mbCodec: 'avc', codec: 'avc1.640033', extra: { avc: { format: 'avc' } } },
-    { mbCodec: 'avc', codec: 'avc1.640032', extra: { avc: { format: 'avc' } } },
-    { mbCodec: 'avc', codec: 'avc1.640028', extra: { avc: { format: 'avc' } } },
-    { mbCodec: 'avc', codec: 'avc1.4d0033', extra: { avc: { format: 'avc' } } },
-    { mbCodec: 'avc', codec: 'avc1.42e033', extra: { avc: { format: 'avc' } } },
-    { mbCodec: 'avc', codec: 'avc1.42e01f', extra: { avc: { format: 'avc' } } },
-  ];
-  for (const c of candidates) {
-    const config = { codec: c.codec, width, height, bitrate, framerate: FPS, ...c.extra };
-    try {
-      if ((await VideoEncoder.isConfigSupported(config)).supported) return { mbCodec: c.mbCodec, config };
-    } catch {}
-  }
-  return null;
+// Mediabunny picks the encoder config (incl. Safari-safe H.264 profiles) and runs this in place of its own
+// WebCodecs encoder while an HDR export is active. It only adds the HLG colour space to the stream metadata, which
+// becomes the file's colour box; browsers don't reliably report it themselves.
+let hlgEncoder = null;
+function hlgEncoderClass(mb) {
+  if (hlgEncoder) return hlgEncoder;
+  hlgEncoder = class extends mb.CustomVideoEncoder {
+    static supports(codec) {
+      return hlgEncoder.active && codec === 'avc';
+    }
+
+    async init() {
+      // Mediabunny hands over its first candidate config; fall back to other H.264 profiles if it isn't supported.
+      let config = this.config;
+      if (!(await VideoEncoder.isConfigSupported(config)).supported) {
+        const level = config.codec.slice(-2);
+        for (const codec of [`avc1.4240${level}`, `avc1.4d40${level}`, `avc1.6400${level}`, 'avc1.42e01f']) {
+          const candidate = { ...config, codec };
+          if ((await VideoEncoder.isConfigSupported(candidate)).supported) {
+            config = candidate;
+            break;
+          }
+        }
+      }
+      this.encoder = new VideoEncoder({
+        output: (chunk, meta) => {
+          const m = meta?.decoderConfig ? { ...meta, decoderConfig: { ...meta.decoderConfig, colorSpace: HDR_COLOR } } : meta;
+          this.onPacket(mb.EncodedPacket.fromEncodedChunk(chunk), m);
+        },
+        error: err => this.onError(err),
+      });
+      this.encoder.configure(config);
+    }
+
+    async encode(sample, options) {
+      const frame = sample.toVideoFrame();
+      this.encoder.encode(frame, options);
+      frame.close();
+      while (this.encoder.encodeQueueSize > 4) await new Promise(r => setTimeout(r, 4));
+    }
+
+    async flush() {
+      await this.encoder.flush();
+    }
+
+    close() {
+      if (this.encoder.state !== 'closed') this.encoder.close();
+    }
+  };
+  hlgEncoder.active = false;
+  mb.registerEncoder(hlgEncoder);
+  return hlgEncoder;
 }
 
 // Copies a decoded frame (I420 / I420P10 / I420P12 / NV12) into 8-bit limited-range I420 without changing colours:

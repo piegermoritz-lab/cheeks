@@ -1,14 +1,14 @@
-import { extractAudio } from './audio.js?v=39';
-import { transcribe } from './transcribe.js?v=39';
-import { DEFAULT_DICTIONARY } from './dictionary.js?v=39';
+import { extractAudio } from './audio.js?v=40';
+import { transcribe } from './transcribe.js?v=40';
+import { DEFAULT_DICTIONARY } from './dictionary.js?v=40';
 import {
   defaultStyle, groupWords, setChunkText, flatten, chunkAt, drawCaption, splitChunk, mergeWithNext, moveEdge,
-} from './captions.js?v=39';
-import { renderVideo } from './render.js?v=39';
-import { renderFast } from './render-fast.js?v=39';
-import { drawUpright } from './render-fast.js?v=39';
-import { renderCapture } from './render-capture.js?v=39';
-import { renderHdr } from './render-hdr.js?v=39';
+} from './captions.js?v=40';
+import { renderVideo } from './render.js?v=40';
+import { renderFast } from './render-fast.js?v=40';
+import { drawUpright } from './render-fast.js?v=40';
+import { renderCapture } from './render-capture.js?v=40';
+import { renderHdr } from './render-hdr.js?v=40';
 
 const $ = id => document.getElementById(id);
 
@@ -824,7 +824,7 @@ $('btn-diag').addEventListener('click', async () => {
   out.hidden = false;
   out.textContent = 'Läuft…';
   try {
-    const { diagnose } = await import('./diag.js?v=39');
+    const { diagnose } = await import('./diag.js?v=40');
     out.textContent = `export: ${state.exportPath ?? '–'}${state.exportError ? ` (${state.exportError})` : ''}\n${await diagnose(state.file, preview)}`;
   } catch (err) {
     out.textContent = `Diagnose fehlgeschlagen: ${err.message}`;
